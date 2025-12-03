@@ -1,0 +1,137 @@
+[
+  {
+    "file": "org/apache/pulsar/testclient/PerformanceProducer.java",
+    "line": 84,
+    "className": "org.apache.pulsar.testclient.PerformanceProducer",
+    "fieldName": "executor",
+    "fieldType": "ExecutorService",
+    "pattern": "static_mutable_collection",
+    "riskLevel": "HIGH"
+  },
+  {
+    "file": "org/apache/pulsar/testclient/PerformanceProducer.java",
+    "line": 87,
+    "className": "org.apache.pulsar.testclient.PerformanceProducer",
+    "fieldName": "messagesSent",
+    "fieldType": "LongAdder",
+    "pattern": "static_mutable_collection",
+    "riskLevel": "HIGH"
+  },
+  {
+    "file": "org/apache/pulsar/testclient/PerformanceProducer.java",
+    "line": 88,
+    "className": "org.apache.pulsar.testclient.PerformanceProducer",
+    "fieldName": "messagesFailed",
+    "fieldType": "LongAdder",
+    "pattern": "static_mutable_collection",
+    "riskLevel": "HIGH"
+  },
+  {
+    "file": "org/apache/pulsar/testclient/PerformanceProducer.java",
+    "line": 89,
+    "className": "org.apache.pulsar.testclient.PerformanceProducer",
+    "fieldName": "bytesSent",
+    "fieldType": "LongAdder",
+    "pattern": "static_mutable_collection",
+    "riskLevel": "HIGH"
+  },
+  {
+    "file": "org/apache/pulsar/testclient/PerformanceConsumer.java",
+    "line": 62,
+    "className": "org.apache.pulsar.testclient.PerformanceConsumer",
+    "fieldName": "messagesReceived",
+    "fieldType": "LongAdder",
+    "pattern": "static_mutable_collection",
+    "riskLevel": "HIGH"
+  },
+  {
+    "file": "org/apache/pulsar/testclient/PerformanceConsumer.java",
+    "line": 63,
+    "className": "org.apache.pulsar.testclient.PerformanceConsumer",
+    "fieldName": "bytesReceived",
+    "fieldType": "LongAdder",
+    "pattern": "static_mutable_collection",
+    "riskLevel": "HIGH"
+  },
+  {
+    "file": "org/apache/pulsar/testclient/PerformanceReader.java",
+    "line": 51,
+    "className": "org.apache.pulsar.testclient.PerformanceReader",
+    "fieldName": "messagesReceived",
+    "fieldType": "LongAdder",
+    "pattern": "static_mutable_collection",
+    "riskLevel": "HIGH"
+  },
+  {
+    "file": "org/apache/pulsar/testclient/PerformanceReader.java",
+    "line": 52,
+    "className": "org.apache.pulsar.testclient.PerformanceReader",
+    "fieldName": "bytesReceived",
+    "fieldType": "LongAdder",
+    "pattern": "static_mutable_collection",
+    "riskLevel": "HIGH"
+  },
+  {
+    "file": "org/apache/pulsar/testclient/PerformanceTransaction.java",
+    "line": 70,
+    "className": "org.apache.pulsar.testclient.PerformanceTransaction",
+    "fieldName": "totalNumEndTxnOpFailed",
+    "fieldType": "LongAdder",
+    "pattern": "static_mutable_collection",
+    "riskLevel": "HIGH"
+  },
+  {
+    "file": "org/apache/pulsar/testclient/PerformanceTransaction.java",
+    "line": 71,
+    "className": "org.apache.pulsar.testclient.PerformanceTransaction",
+    "fieldName": "totalNumEndTxnOpSuccess",
+    "fieldType": "LongAdder",
+    "pattern": "static_mutable_collection",
+    "riskLevel": "HIGH"
+  },
+  {
+    "file": "org/apache/pulsar/testclient/BrokerMonitor.java",
+    "line": 94,
+    "className": "org.apache.pulsar.testclient.BrokerMonitor",
+    "fieldName": "loadData",
+    "fieldType": "Map<String, LoadManagerReport>",
+    "pattern": "static_mutable_collection",
+    "riskLevel": "HIGH"
+  },
+  {
+    "file": "org/apache/pulsar/testclient/LoadSimulationClient.java",
+    "line": 71,
+    "className": "org.apache.pulsar.testclient.LoadSimulationClient",
+    "fieldName": "payloadCache",
+    "fieldType": "Map<Integer, byte[]>",
+    "pattern": "static_mutable_collection",
+    "riskLevel": "HIGH"
+  },
+  {
+    "file": "org/apache/pulsar/testclient/LoadSimulationClient.java",
+    "line": 74,
+    "className": "org.apache.pulsar.testclient.LoadSimulationClient",
+    "fieldName": "topicsToTradeUnits",
+    "fieldType": "Map<String, TradeUnit>",
+    "pattern": "static_mutable_collection",
+    "riskLevel": "HIGH"
+  },
+  {
+    "file": "org/apache/pulsar/testclient/LoadSimulationController.java",
+    "line": 80,
+    "className": "org.apache.pulsar.testclient.LoadSimulationController",
+    "fieldName": "threadPool",
+    "fieldType": "ExecutorService",
+    "pattern": "static_mutable_collection",
+    "riskLevel": "HIGH"
+  },
+  {
+    "file": "org/apache/pulsar/testclient/PerfClientUtils.java",
+    "line": 45,
+    "className": "org.apache.pulsar.testclient.PerfClientUtils",
+    "fieldName": "exitProcedure",
+    "fieldType": "Consumer<Integer>",
+    "pattern": "static_mutable_collection",
+    "riskLevel": "HIGH"
+  }
+]

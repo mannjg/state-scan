@@ -1,0 +1,47 @@
+[
+  {
+    "file": "org/apache/pulsar/metadata/bookkeeper/LegacyHierarchicalLedgerRangeIterator.java",
+    "line": 144,
+    "className": "org.apache.pulsar.metadata.bookkeeper.LegacyHierarchicalLedgerRangeIterator",
+    "fieldName": "threadLocalNodeBuilder",
+    "fieldType": "ThreadLocal<StringBuilder>",
+    "pattern": "threadlocal",
+    "riskLevel": "HIGH"
+  },
+  {
+    "file": "org/apache/pulsar/metadata/impl/RocksdbMetadataStore.java",
+    "line": 97,
+    "className": "org.apache.pulsar.metadata.impl.RocksdbMetadataStore",
+    "fieldName": "instancesCache",
+    "fieldType": "Map<String, RocksdbMetadataStore>",
+    "pattern": "static_mutable_collection",
+    "riskLevel": "HIGH"
+  },
+  {
+    "file": "org/apache/pulsar/metadata/impl/LocalMemoryMetadataStore.java",
+    "line": 71,
+    "className": "org.apache.pulsar.metadata.impl.LocalMemoryMetadataStore",
+    "fieldName": "STATIC_MAPS",
+    "fieldType": "Map<String, NavigableMap<String, Value>>",
+    "pattern": "static_mutable_collection",
+    "riskLevel": "HIGH"
+  },
+  {
+    "file": "org/apache/pulsar/metadata/impl/LocalMemoryMetadataStore.java",
+    "line": 74,
+    "className": "org.apache.pulsar.metadata.impl.LocalMemoryMetadataStore",
+    "fieldName": "STATIC_INSTANCE",
+    "fieldType": "Map<String, Set<AbstractMetadataStore>>",
+    "pattern": "static_mutable_collection",
+    "riskLevel": "HIGH"
+  },
+  {
+    "file": "org/apache/pulsar/metadata/impl/LocalMemoryMetadataStore.java",
+    "line": 76,
+    "className": "org.apache.pulsar.metadata.impl.LocalMemoryMetadataStore",
+    "fieldName": "STATIC_ID_GEN_MAP",
+    "fieldType": "Map<String, AtomicLong>",
+    "pattern": "static_mutable_collection",
+    "riskLevel": "HIGH"
+  }
+]

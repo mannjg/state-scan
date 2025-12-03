@@ -1,0 +1,11 @@
+[
+  {
+    "file": "org/apache/pulsar/client/admin/internal/http/AsyncHttpConnector.java",
+    "line": 106,
+    "className": "org.apache.pulsar.client.admin.internal.http.AsyncHttpConnector",
+    "fieldName": "concurrencyReducers",
+    "fieldType": "Map<String, ConcurrencyReducer<Response>>",
+    "pattern": "static_mutable_collection",
+    "riskLevel": "HIGH"
+  }
+]

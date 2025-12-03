@@ -1,0 +1,616 @@
+{
+  "generator" : "GroundTruthGenerator",
+  "version" : "1.0",
+  "projectRoot" : "/home/jmann/git/pulsar",
+  "packagePrefix" : "org.apache.pulsar",
+  "totalFindings" : 76,
+  "groundTruth" : [ {
+    "className" : "org.apache.pulsar.functions.runtime.kubernetes.KubernetesRuntime",
+    "fieldName" : "TOLERATIONS",
+    "fieldType" : "Ljava/util/List;",
+    "isFinal" : true,
+    "pattern" : "static_mutable_collection",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "KubernetesRuntime.java"
+  }, {
+    "className" : "org.apache.pulsar.functions.instance.InstanceCache",
+    "fieldName" : "instance",
+    "fieldType" : "Lorg/apache/pulsar/functions/instance/InstanceCache;",
+    "isFinal" : false,
+    "pattern" : "static_non_final",
+    "riskLevel" : "CRITICAL",
+    "sourceFile" : "InstanceCache.java"
+  }, {
+    "className" : "org.apache.pulsar.broker.loadbalance.LinuxInfoUtils",
+    "fieldName" : "failedCounterInReadingNicLimits",
+    "fieldType" : "Ljava/util/concurrent/atomic/AtomicLong;",
+    "isFinal" : true,
+    "pattern" : "atomic",
+    "riskLevel" : "MEDIUM",
+    "sourceFile" : "LinuxInfoUtils.java"
+  }, {
+    "className" : "org.apache.pulsar.broker.loadbalance.LinuxInfoUtils",
+    "fieldName" : "metrics",
+    "fieldType" : "Ljava/lang/Object;",
+    "isFinal" : false,
+    "pattern" : "static_non_final",
+    "riskLevel" : "CRITICAL",
+    "sourceFile" : "LinuxInfoUtils.java"
+  }, {
+    "className" : "org.apache.pulsar.broker.loadbalance.LinuxInfoUtils",
+    "fieldName" : "getMetricsProviderMethod",
+    "fieldType" : "Ljava/lang/reflect/Method;",
+    "isFinal" : false,
+    "pattern" : "static_non_final",
+    "riskLevel" : "CRITICAL",
+    "sourceFile" : "LinuxInfoUtils.java"
+  }, {
+    "className" : "org.apache.pulsar.broker.loadbalance.LinuxInfoUtils",
+    "fieldName" : "getCpuQuotaMethod",
+    "fieldType" : "Ljava/lang/reflect/Method;",
+    "isFinal" : false,
+    "pattern" : "static_non_final",
+    "riskLevel" : "CRITICAL",
+    "sourceFile" : "LinuxInfoUtils.java"
+  }, {
+    "className" : "org.apache.pulsar.broker.loadbalance.LinuxInfoUtils",
+    "fieldName" : "getCpuPeriodMethod",
+    "fieldType" : "Ljava/lang/reflect/Method;",
+    "isFinal" : false,
+    "pattern" : "static_non_final",
+    "riskLevel" : "CRITICAL",
+    "sourceFile" : "LinuxInfoUtils.java"
+  }, {
+    "className" : "org.apache.pulsar.broker.loadbalance.LinuxInfoUtils",
+    "fieldName" : "getCpuUsageMethod",
+    "fieldType" : "Ljava/lang/reflect/Method;",
+    "isFinal" : false,
+    "pattern" : "static_non_final",
+    "riskLevel" : "CRITICAL",
+    "sourceFile" : "LinuxInfoUtils.java"
+  }, {
+    "className" : "org.apache.pulsar.broker.loadbalance.extensions.ExtensibleLoadManagerImpl",
+    "fieldName" : "INTERNAL_TOPICS",
+    "fieldType" : "Ljava/util/Set;",
+    "isFinal" : true,
+    "pattern" : "static_mutable_collection",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "ExtensibleLoadManagerImpl.java"
+  }, {
+    "className" : "org.apache.pulsar.broker.loadbalance.extensions.channel.ServiceUnitState",
+    "fieldName" : "validTransitionsOverSystemTopic",
+    "fieldType" : "Ljava/util/Map;",
+    "isFinal" : true,
+    "pattern" : "static_mutable_collection",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "ServiceUnitState.java"
+  }, {
+    "className" : "org.apache.pulsar.broker.loadbalance.extensions.channel.ServiceUnitState",
+    "fieldName" : "validTransitionsOverMetadataStore",
+    "fieldType" : "Ljava/util/Map;",
+    "isFinal" : true,
+    "pattern" : "static_mutable_collection",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "ServiceUnitState.java"
+  }, {
+    "className" : "org.apache.pulsar.broker.loadbalance.extensions.channel.ServiceUnitState",
+    "fieldName" : "inFlightStates",
+    "fieldType" : "Ljava/util/Set;",
+    "isFinal" : true,
+    "pattern" : "static_mutable_collection",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "ServiceUnitState.java"
+  }, {
+    "className" : "org.apache.pulsar.PulsarClusterMetadataTeardown",
+    "fieldName" : "localZkNodes",
+    "fieldType" : "[Ljava/lang/String;",
+    "isFinal" : false,
+    "pattern" : "static_non_final",
+    "riskLevel" : "CRITICAL",
+    "sourceFile" : "PulsarClusterMetadataTeardown.java"
+  }, {
+    "className" : "org.apache.pulsar.bcloader.BouncyCastleLoader",
+    "fieldName" : "provider",
+    "fieldType" : "Ljava/security/Provider;",
+    "isFinal" : false,
+    "pattern" : "static_non_final",
+    "riskLevel" : "CRITICAL",
+    "sourceFile" : "BouncyCastleLoader.java"
+  }, {
+    "className" : "org.apache.pulsar.bcloader.BouncyCastleFipsLoader",
+    "fieldName" : "provider",
+    "fieldType" : "Ljava/security/Provider;",
+    "isFinal" : false,
+    "pattern" : "static_non_final",
+    "riskLevel" : "CRITICAL",
+    "sourceFile" : "BouncyCastleFipsLoader.java"
+  }, {
+    "className" : "org.apache.pulsar.tests.FastThreadLocalCleanupListener",
+    "fieldName" : "CLEANER",
+    "fieldType" : "Lorg/apache/pulsar/tests/FastThreadLocalStateCleaner;",
+    "isFinal" : true,
+    "pattern" : "thread_local",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "FastThreadLocalCleanupListener.java"
+  }, {
+    "className" : "org.apache.pulsar.tests.TraceTestResourceCleanupListener",
+    "fieldName" : "MODE",
+    "fieldType" : "Lorg/apache/pulsar/tests/TraceTestResourceCleanupListener$TraceTestResourceCleanupMode;",
+    "isFinal" : true,
+    "pattern" : "static_mutable_collection",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "TraceTestResourceCleanupListener.java"
+  }, {
+    "className" : "org.apache.pulsar.tests.FastThreadLocalStateCleaner",
+    "fieldName" : "SLOW_THREAD_LOCAL_MAP",
+    "fieldType" : "Ljava/lang/ThreadLocal;",
+    "isFinal" : true,
+    "pattern" : "thread_local",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "FastThreadLocalStateCleaner.java"
+  }, {
+    "className" : "org.apache.pulsar.tests.ThreadLocalStateCleaner",
+    "fieldName" : "INSTANCE",
+    "fieldType" : "Lorg/apache/pulsar/tests/ThreadLocalStateCleaner;",
+    "isFinal" : true,
+    "pattern" : "thread_local",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "ThreadLocalStateCleaner.java"
+  }, {
+    "className" : "org.apache.pulsar.tests.MockitoThreadLocalStateCleaner",
+    "fieldName" : "INSTANCE",
+    "fieldType" : "Lorg/apache/pulsar/tests/MockitoThreadLocalStateCleaner;",
+    "isFinal" : true,
+    "pattern" : "thread_local",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "MockitoThreadLocalStateCleaner.java"
+  }, {
+    "className" : "org.apache.pulsar.tests.MockitoThreadLocalStateCleaner",
+    "fieldName" : "MOCKING_PROGRESS_PROVIDER",
+    "fieldType" : "Ljava/lang/ThreadLocal;",
+    "isFinal" : true,
+    "pattern" : "thread_local",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "MockitoThreadLocalStateCleaner.java"
+  }, {
+    "className" : "org.apache.pulsar.tests.RetryAnalyzer",
+    "fieldName" : "CHANGED_TEST_CLASSES",
+    "fieldType" : "Ljava/util/Set;",
+    "isFinal" : true,
+    "pattern" : "static_mutable_collection",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "RetryAnalyzer.java"
+  }, {
+    "className" : "org.apache.pulsar.client.api.url.PulsarURLStreamHandlerFactory",
+    "fieldName" : "handlers",
+    "fieldType" : "Ljava/util/Map;",
+    "isFinal" : true,
+    "pattern" : "static_mutable_collection",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "PulsarURLStreamHandlerFactory.java"
+  }, {
+    "className" : "org.apache.pulsar.client.impl.schema.SchemaUtils",
+    "fieldName" : "SCHEMA_TYPE_CLASSES",
+    "fieldType" : "Ljava/util/Map;",
+    "isFinal" : true,
+    "pattern" : "static_mutable_collection",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "SchemaUtils.java"
+  }, {
+    "className" : "org.apache.pulsar.client.impl.schema.SchemaUtils",
+    "fieldName" : "JAVA_CLASS_SCHEMA_TYPES",
+    "fieldType" : "Ljava/util/Map;",
+    "isFinal" : true,
+    "pattern" : "static_mutable_collection",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "SchemaUtils.java"
+  }, {
+    "className" : "org.apache.pulsar.common.naming.SystemTopicNames",
+    "fieldName" : "EVENTS_TOPIC_NAMES",
+    "fieldType" : "Ljava/util/Set;",
+    "isFinal" : true,
+    "pattern" : "static_mutable_collection",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "SystemTopicNames.java"
+  }, {
+    "className" : "org.apache.pulsar.common.naming.TopicName",
+    "fieldName" : "cache",
+    "fieldType" : "Ljava/util/concurrent/ConcurrentHashMap;",
+    "isFinal" : true,
+    "pattern" : "static_mutable_collection",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "TopicName.java"
+  }, {
+    "className" : "org.apache.pulsar.common.naming.NamespaceName",
+    "fieldName" : "cache",
+    "fieldType" : "Lcom/google/common/cache/LoadingCache;",
+    "isFinal" : true,
+    "pattern" : "cache",
+    "riskLevel" : "CRITICAL",
+    "sourceFile" : "NamespaceName.java"
+  }, {
+    "className" : "org.apache.pulsar.common.policies.data.OffloadPoliciesImpl",
+    "fieldName" : "CONFIGURATION_FIELDS",
+    "fieldType" : "Ljava/util/List;",
+    "isFinal" : true,
+    "pattern" : "static_mutable_collection",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "OffloadPoliciesImpl.java"
+  }, {
+    "className" : "org.apache.pulsar.common.api.raw.MessageParser",
+    "fieldName" : "LOCAL_SINGLE_MESSAGE_METADATA",
+    "fieldType" : "Lio/netty/util/concurrent/FastThreadLocal;",
+    "isFinal" : true,
+    "pattern" : "thread_local",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "MessageParser.java"
+  }, {
+    "className" : "org.apache.pulsar.common.allocator.PulsarByteBufAllocator",
+    "fieldName" : "LISTENERS",
+    "fieldType" : "Ljava/util/List;",
+    "isFinal" : true,
+    "pattern" : "static_mutable_collection",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "PulsarByteBufAllocator.java"
+  }, {
+    "className" : "org.apache.pulsar.common.stats.JvmMetrics",
+    "fieldName" : "gcLoggerMap",
+    "fieldType" : "Ljava/util/Map;",
+    "isFinal" : true,
+    "pattern" : "static_mutable_collection",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "JvmMetrics.java"
+  }, {
+    "className" : "org.apache.pulsar.common.stats.JvmDefaultGCMetricsLogger",
+    "fieldName" : "runtime",
+    "fieldType" : "Ljava/lang/Object;",
+    "isFinal" : false,
+    "pattern" : "static_non_final",
+    "riskLevel" : "CRITICAL",
+    "sourceFile" : "JvmDefaultGCMetricsLogger.java"
+  }, {
+    "className" : "org.apache.pulsar.common.stats.JvmDefaultGCMetricsLogger",
+    "fieldName" : "getTotalSafepointTimeHandle",
+    "fieldType" : "Ljava/lang/reflect/Method;",
+    "isFinal" : false,
+    "pattern" : "static_non_final",
+    "riskLevel" : "CRITICAL",
+    "sourceFile" : "JvmDefaultGCMetricsLogger.java"
+  }, {
+    "className" : "org.apache.pulsar.common.stats.JvmDefaultGCMetricsLogger",
+    "fieldName" : "getSafepointCountHandle",
+    "fieldType" : "Ljava/lang/reflect/Method;",
+    "isFinal" : false,
+    "pattern" : "static_non_final",
+    "riskLevel" : "CRITICAL",
+    "sourceFile" : "JvmDefaultGCMetricsLogger.java"
+  }, {
+    "className" : "org.apache.pulsar.common.stats.JvmG1GCMetricsLogger",
+    "fieldName" : "youngGenName",
+    "fieldType" : "Ljavax/management/ObjectName;",
+    "isFinal" : false,
+    "pattern" : "static_non_final",
+    "riskLevel" : "CRITICAL",
+    "sourceFile" : "JvmG1GCMetricsLogger.java"
+  }, {
+    "className" : "org.apache.pulsar.common.stats.JvmG1GCMetricsLogger",
+    "fieldName" : "oldGenName",
+    "fieldType" : "Ljavax/management/ObjectName;",
+    "isFinal" : false,
+    "pattern" : "static_non_final",
+    "riskLevel" : "CRITICAL",
+    "sourceFile" : "JvmG1GCMetricsLogger.java"
+  }, {
+    "className" : "org.apache.pulsar.common.nar.NarUnpacker",
+    "fieldName" : "CURRENT_JVM_FILE_LOCKS",
+    "fieldType" : "Ljava/util/concurrent/ConcurrentHashMap;",
+    "isFinal" : true,
+    "pattern" : "static_mutable_collection",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "NarUnpacker.java"
+  }, {
+    "className" : "org.apache.pulsar.common.compression.CompressionCodecLZ4",
+    "fieldName" : "LZ4_COMPRESSOR",
+    "fieldType" : "Lio/netty/util/concurrent/FastThreadLocal;",
+    "isFinal" : true,
+    "pattern" : "thread_local",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "CompressionCodecLZ4.java"
+  }, {
+    "className" : "org.apache.pulsar.common.compression.CompressionCodecLZ4",
+    "fieldName" : "LZ4_DECOMPRESSOR",
+    "fieldType" : "Lio/netty/util/concurrent/FastThreadLocal;",
+    "isFinal" : true,
+    "pattern" : "thread_local",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "CompressionCodecLZ4.java"
+  }, {
+    "className" : "org.apache.pulsar.common.compression.CompressionCodecLZ4",
+    "fieldName" : "LZ4_TABLE",
+    "fieldType" : "Lio/netty/util/concurrent/FastThreadLocal;",
+    "isFinal" : true,
+    "pattern" : "thread_local",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "CompressionCodecLZ4.java"
+  }, {
+    "className" : "org.apache.pulsar.common.compression.CompressionCodecSnappy",
+    "fieldName" : "SNAPPY_TABLE",
+    "fieldType" : "Lio/netty/util/concurrent/FastThreadLocal;",
+    "isFinal" : true,
+    "pattern" : "thread_local",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "CompressionCodecSnappy.java"
+  }, {
+    "className" : "org.apache.pulsar.common.compression.CompressionCodecSnappy",
+    "fieldName" : "SNAPPY_COMPRESSOR",
+    "fieldType" : "Lio/netty/util/concurrent/FastThreadLocal;",
+    "isFinal" : true,
+    "pattern" : "thread_local",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "CompressionCodecSnappy.java"
+  }, {
+    "className" : "org.apache.pulsar.common.compression.CompressionCodecSnappy",
+    "fieldName" : "SNAPPY_DECOMPRESSOR",
+    "fieldType" : "Lio/netty/util/concurrent/FastThreadLocal;",
+    "isFinal" : true,
+    "pattern" : "thread_local",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "CompressionCodecSnappy.java"
+  }, {
+    "className" : "org.apache.pulsar.common.compression.CompressionCodecZstd",
+    "fieldName" : "ZSTD_RAW_DECOMPRESSOR",
+    "fieldType" : "Lio/netty/util/concurrent/FastThreadLocal;",
+    "isFinal" : true,
+    "pattern" : "thread_local",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "CompressionCodecZstd.java"
+  }, {
+    "className" : "org.apache.pulsar.common.compression.CompressionCodecZstd",
+    "fieldName" : "ZSTD_DECOMPRESSOR",
+    "fieldType" : "Lio/netty/util/concurrent/FastThreadLocal;",
+    "isFinal" : true,
+    "pattern" : "thread_local",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "CompressionCodecZstd.java"
+  }, {
+    "className" : "org.apache.pulsar.common.compression.CompressionCodecProvider",
+    "fieldName" : "codecs",
+    "fieldType" : "Ljava/util/EnumMap;",
+    "isFinal" : true,
+    "pattern" : "static_mutable_collection",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "CompressionCodecProvider.java"
+  }, {
+    "className" : "org.apache.pulsar.common.util.Reflections",
+    "fieldName" : "constructorCache",
+    "fieldType" : "Ljava/util/Map;",
+    "isFinal" : true,
+    "pattern" : "static_mutable_collection",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "Reflections.java"
+  }, {
+    "className" : "org.apache.pulsar.common.util.Reflections",
+    "fieldName" : "PRIMITIVE_NAME_TYPE_MAP",
+    "fieldType" : "Ljava/util/Map;",
+    "isFinal" : true,
+    "pattern" : "static_mutable_collection",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "Reflections.java"
+  }, {
+    "className" : "org.apache.pulsar.common.util.FieldParser",
+    "fieldName" : "CONVERTERS",
+    "fieldType" : "Ljava/util/Map;",
+    "isFinal" : true,
+    "pattern" : "static_mutable_collection",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "FieldParser.java"
+  }, {
+    "className" : "org.apache.pulsar.common.util.FieldParser",
+    "fieldName" : "WRAPPER_TYPES",
+    "fieldType" : "Ljava/util/Map;",
+    "isFinal" : true,
+    "pattern" : "static_mutable_collection",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "FieldParser.java"
+  }, {
+    "className" : "org.apache.pulsar.common.util.PortManager",
+    "fieldName" : "PORTS",
+    "fieldType" : "Ljava/util/Set;",
+    "isFinal" : true,
+    "pattern" : "static_mutable_collection",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "PortManager.java"
+  }, {
+    "className" : "org.apache.pulsar.common.util.ObjectMapperFactory",
+    "fieldName" : "MAPPER_REFERENCE",
+    "fieldType" : "Ljava/util/concurrent/atomic/AtomicReference;",
+    "isFinal" : true,
+    "pattern" : "atomic",
+    "riskLevel" : "MEDIUM",
+    "sourceFile" : "ObjectMapperFactory.java"
+  }, {
+    "className" : "org.apache.pulsar.common.util.ObjectMapperFactory",
+    "fieldName" : "INSTANCE_WITH_INCLUDE_ALWAYS",
+    "fieldType" : "Ljava/util/concurrent/atomic/AtomicReference;",
+    "isFinal" : true,
+    "pattern" : "atomic",
+    "riskLevel" : "MEDIUM",
+    "sourceFile" : "ObjectMapperFactory.java"
+  }, {
+    "className" : "org.apache.pulsar.common.util.ObjectMapperFactory",
+    "fieldName" : "YAML_MAPPER_REFERENCE",
+    "fieldType" : "Ljava/util/concurrent/atomic/AtomicReference;",
+    "isFinal" : true,
+    "pattern" : "atomic",
+    "riskLevel" : "MEDIUM",
+    "sourceFile" : "ObjectMapperFactory.java"
+  }, {
+    "className" : "org.apache.pulsar.common.util.SecurityUtility",
+    "fieldName" : "KEY_FACTORIES",
+    "fieldType" : "Ljava/util/List;",
+    "isFinal" : true,
+    "pattern" : "static_mutable_collection",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "SecurityUtility.java"
+  }, {
+    "className" : "org.apache.pulsar.common.sasl.KerberosName",
+    "fieldName" : "rules",
+    "fieldType" : "Ljava/util/List;",
+    "isFinal" : false,
+    "pattern" : "static_non_final",
+    "riskLevel" : "CRITICAL",
+    "sourceFile" : "KerberosName.java"
+  }, {
+    "className" : "org.apache.pulsar.common.topics.TopicCompactionStrategy",
+    "fieldName" : "INSTANCES",
+    "fieldType" : "Ljava/util/Map;",
+    "isFinal" : true,
+    "pattern" : "static_mutable_collection",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "TopicCompactionStrategy.java"
+  }, {
+    "className" : "org.apache.pulsar.common.protocol.Commands",
+    "fieldName" : "LOCAL_BASE_COMMAND",
+    "fieldType" : "Lio/netty/util/concurrent/FastThreadLocal;",
+    "isFinal" : true,
+    "pattern" : "thread_local",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "Commands.java"
+  }, {
+    "className" : "org.apache.pulsar.common.protocol.Commands",
+    "fieldName" : "LOCAL_SINGLE_MESSAGE_METADATA",
+    "fieldType" : "Lio/netty/util/concurrent/FastThreadLocal;",
+    "isFinal" : true,
+    "pattern" : "thread_local",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "Commands.java"
+  }, {
+    "className" : "org.apache.pulsar.common.protocol.Commands",
+    "fieldName" : "LOCAL_MESSAGE_METADATA",
+    "fieldType" : "Lio/netty/util/concurrent/FastThreadLocal;",
+    "isFinal" : true,
+    "pattern" : "thread_local",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "Commands.java"
+  }, {
+    "className" : "org.apache.pulsar.common.protocol.Commands",
+    "fieldName" : "BROKER_ENTRY_METADATA",
+    "fieldType" : "Lio/netty/util/concurrent/FastThreadLocal;",
+    "isFinal" : true,
+    "pattern" : "thread_local",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "Commands.java"
+  }, {
+    "className" : "org.apache.pulsar.common.protocol.Markers",
+    "fieldName" : "LOCAL_MESSAGE_METADATA",
+    "fieldType" : "Lio/netty/util/concurrent/FastThreadLocal;",
+    "isFinal" : true,
+    "pattern" : "thread_local",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "Markers.java"
+  }, {
+    "className" : "org.apache.pulsar.common.protocol.Markers",
+    "fieldName" : "LOCAL_SNAPSHOT_REQUEST",
+    "fieldType" : "Lio/netty/util/concurrent/FastThreadLocal;",
+    "isFinal" : true,
+    "pattern" : "thread_local",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "Markers.java"
+  }, {
+    "className" : "org.apache.pulsar.common.protocol.Markers",
+    "fieldName" : "LOCAL_SNAPSHOT_RESPONSE",
+    "fieldType" : "Lio/netty/util/concurrent/FastThreadLocal;",
+    "isFinal" : true,
+    "pattern" : "thread_local",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "Markers.java"
+  }, {
+    "className" : "org.apache.pulsar.common.protocol.Markers",
+    "fieldName" : "LOCAL_SNAPSHOT",
+    "fieldType" : "Lio/netty/util/concurrent/FastThreadLocal;",
+    "isFinal" : true,
+    "pattern" : "thread_local",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "Markers.java"
+  }, {
+    "className" : "org.apache.pulsar.common.protocol.Markers",
+    "fieldName" : "LOCAL_SUBSCRIPTION_UPDATE",
+    "fieldType" : "Lio/netty/util/concurrent/FastThreadLocal;",
+    "isFinal" : true,
+    "pattern" : "thread_local",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "Markers.java"
+  }, {
+    "className" : "org.apache.pulsar.websocket.ProducerHandler",
+    "fieldName" : "ENTRY_LATENCY_BUCKETS_USEC",
+    "fieldType" : "Ljava/util/List;",
+    "isFinal" : true,
+    "pattern" : "static_mutable_collection",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "ProducerHandler.java"
+  }, {
+    "className" : "org.apache.pulsar.broker.authentication.metrics.AuthenticationMetrics",
+    "fieldName" : "authSuccessMetrics",
+    "fieldType" : "Lio/prometheus/client/Counter;",
+    "isFinal" : true,
+    "pattern" : "metrics",
+    "riskLevel" : "MEDIUM",
+    "sourceFile" : "AuthenticationMetrics.java"
+  }, {
+    "className" : "org.apache.pulsar.broker.authentication.metrics.AuthenticationMetrics",
+    "fieldName" : "authFailuresMetrics",
+    "fieldType" : "Lio/prometheus/client/Counter;",
+    "isFinal" : true,
+    "pattern" : "metrics",
+    "riskLevel" : "MEDIUM",
+    "sourceFile" : "AuthenticationMetrics.java"
+  }, {
+    "className" : "org.apache.pulsar.broker.authentication.metrics.AuthenticationMetricsToken",
+    "fieldName" : "expiredTokenMetrics",
+    "fieldType" : "Lio/prometheus/client/Counter;",
+    "isFinal" : true,
+    "pattern" : "metrics",
+    "riskLevel" : "MEDIUM",
+    "sourceFile" : "AuthenticationMetricsToken.java"
+  }, {
+    "className" : "org.apache.pulsar.broker.authentication.metrics.AuthenticationMetricsToken",
+    "fieldName" : "TOKEN_DURATION_BUCKET_BOUNDARIES_SECONDS",
+    "fieldType" : "Ljava/util/List;",
+    "isFinal" : true,
+    "pattern" : "static_mutable_collection",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "AuthenticationMetricsToken.java"
+  }, {
+    "className" : "org.apache.pulsar.broker.authentication.metrics.AuthenticationMetricsToken",
+    "fieldName" : "expiringTokenMinutesMetrics",
+    "fieldType" : "Lio/prometheus/client/Histogram;",
+    "isFinal" : true,
+    "pattern" : "metrics",
+    "riskLevel" : "MEDIUM",
+    "sourceFile" : "AuthenticationMetricsToken.java"
+  }, {
+    "className" : "org.apache.pulsar.broker.web.RateLimitingFilter",
+    "fieldName" : "httpRejectedRequests",
+    "fieldType" : "Lio/prometheus/client/Counter;",
+    "isFinal" : true,
+    "pattern" : "metrics",
+    "riskLevel" : "MEDIUM",
+    "sourceFile" : "RateLimitingFilter.java"
+  }, {
+    "className" : "org.apache.pulsar.cli.converters.ByteUnitUtil",
+    "fieldName" : "sizeUnit",
+    "fieldType" : "Ljava/util/Set;",
+    "isFinal" : false,
+    "pattern" : "static_non_final",
+    "riskLevel" : "CRITICAL",
+    "sourceFile" : "ByteUnitUtil.java"
+  }, {
+    "className" : "org.apache.pulsar.structuredeventlog.slf4j.Slf4jEvent",
+    "fieldName" : "loggersTLS",
+    "fieldType" : "Ljava/lang/ThreadLocal;",
+    "isFinal" : true,
+    "pattern" : "thread_local",
+    "riskLevel" : "HIGH",
+    "sourceFile" : "Slf4jEvent.java"
+  } ]
+}

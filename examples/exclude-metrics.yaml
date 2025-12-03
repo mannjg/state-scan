@@ -1,0 +1,21 @@
+# Example: Exclude common metrics frameworks from findings
+#
+# Copy to your project root as 'state-scan.yaml' or use with -c flag:
+#   java -jar state-scan.jar /path/to/project -c exclude-metrics.yaml
+#
+# Patterns are Java regex matched against fully-qualified type names.
+# Use single quotes in YAML to avoid escape issues.
+
+excludePatterns:
+  # Prometheus client metrics (intentionally stateful, safe for scaling)
+  - '.*\.prometheus\.client\.(Counter|Gauge|Histogram|Summary).*'
+
+  # Micrometer metrics
+  - '.*\.micrometer\.core\.instrument\..*'
+
+  # HdrHistogram (used by many metrics libraries)
+  - '.*\.HdrHistogram\.(Histogram|Recorder).*'
+
+  # Dropwizard metrics
+  - '.*\.codahale\.metrics\..*'
+  - '.*\.dropwizard\.metrics\..*'

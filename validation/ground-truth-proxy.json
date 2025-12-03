@@ -1,0 +1,74 @@
+[
+  {
+    "file": "org/apache/pulsar/proxy/server/ProxyService.java",
+    "line": 112,
+    "className": "org.apache.pulsar.proxy.server.ProxyService",
+    "fieldName": "lookupRequestSemaphore",
+    "fieldType": "AtomicReference<Semaphore>",
+    "pattern": "static_mutable_collection",
+    "riskLevel": "HIGH"
+  },
+  {
+    "file": "org/apache/pulsar/proxy/server/ProxyService.java",
+    "line": 143,
+    "className": "org.apache.pulsar.proxy.server.ProxyService",
+    "fieldName": "clientCnxs",
+    "fieldType": "Set<ProxyConnection>",
+    "pattern": "static_mutable_collection",
+    "riskLevel": "HIGH"
+  },
+  {
+    "file": "org/apache/pulsar/proxy/server/ProxyService.java",
+    "line": 145,
+    "className": "org.apache.pulsar.proxy.server.ProxyService",
+    "fieldName": "topicStats",
+    "fieldType": "Map<String, TopicStats>",
+    "pattern": "static_mutable_collection",
+    "riskLevel": "HIGH"
+  },
+  {
+    "file": "org/apache/pulsar/proxy/server/ParserProxyHandler.java",
+    "line": 62,
+    "className": "org.apache.pulsar.proxy.server.ParserProxyHandler",
+    "fieldName": "producerHashMap",
+    "fieldType": "Map<String, String>",
+    "pattern": "static_mutable_collection",
+    "riskLevel": "HIGH"
+  },
+  {
+    "file": "org/apache/pulsar/proxy/server/ParserProxyHandler.java",
+    "line": 67,
+    "className": "org.apache.pulsar.proxy.server.ParserProxyHandler",
+    "fieldName": "consumerHashMap",
+    "fieldType": "Map<String, String>",
+    "pattern": "static_mutable_collection",
+    "riskLevel": "HIGH"
+  },
+  {
+    "file": "org/apache/pulsar/proxy/server/BrokerDiscoveryProvider.java",
+    "line": 51,
+    "className": "org.apache.pulsar.proxy.server.BrokerDiscoveryProvider",
+    "fieldName": "counter",
+    "fieldType": "AtomicInteger",
+    "pattern": "static_mutable_collection",
+    "riskLevel": "HIGH"
+  },
+  {
+    "file": "org/apache/pulsar/proxy/server/ProxyConnection.java",
+    "line": 93,
+    "className": "org.apache.pulsar.proxy.server.ProxyConnection",
+    "fieldName": "requestIdGenerator",
+    "fieldType": "AtomicLong",
+    "pattern": "static_mutable_collection",
+    "riskLevel": "HIGH"
+  },
+  {
+    "file": "org/apache/pulsar/proxy/server/DirectProxyHandler.java",
+    "line": 107,
+    "className": "org.apache.pulsar.proxy.server.DirectProxyHandler",
+    "fieldName": "pulsarSslFactoryMap",
+    "fieldType": "Map<String, PulsarSslFactory>",
+    "pattern": "static_mutable_collection",
+    "riskLevel": "HIGH"
+  }
+]
