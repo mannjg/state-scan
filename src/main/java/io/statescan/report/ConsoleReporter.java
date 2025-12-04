@@ -1,5 +1,6 @@
 package io.statescan.report;
 
+import io.statescan.graph.CallGraph;
 import io.statescan.model.Finding;
 import io.statescan.model.RiskLevel;
 import io.statescan.model.ScanReport;
@@ -41,18 +42,24 @@ public class ConsoleReporter implements Reporter {
 
     private final boolean useColors;
     private final boolean detailed;
+    private final CallGraph graph;
 
     public ConsoleReporter() {
-        this(true, false);
+        this(true, false, null);
     }
 
     public ConsoleReporter(boolean useColors) {
-        this(useColors, false);
+        this(useColors, false, null);
     }
 
     public ConsoleReporter(boolean useColors, boolean detailed) {
+        this(useColors, detailed, null);
+    }
+
+    public ConsoleReporter(boolean useColors, boolean detailed, CallGraph graph) {
         this.useColors = useColors;
         this.detailed = detailed;
+        this.graph = graph;
     }
 
     @Override
@@ -173,7 +180,12 @@ public class ConsoleReporter implements Reporter {
     }
 
     private void printExternalPorts(PrintWriter out, List<Finding> pathFindings) {
-        List<PortTree.CategoryNode> tree = PortTree.buildTree(pathFindings);
+        if (graph == null) {
+            // Skip external ports display if no CallGraph available (shouldn't happen in normal use)
+            return;
+        }
+
+        List<PortTree.CategoryNode> tree = PortTree.buildTree(pathFindings, graph);
 
         if (tree.isEmpty()) {
             return;

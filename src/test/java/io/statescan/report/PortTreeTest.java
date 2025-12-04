@@ -1,5 +1,7 @@
 package io.statescan.report;
 
+import io.statescan.graph.CallGraph;
+import io.statescan.graph.ClassNode;
 import io.statescan.model.Finding;
 import io.statescan.model.RiskLevel;
 import io.statescan.model.StateType;
@@ -10,6 +12,9 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class PortTreeTest {
+
+    // Empty graph for basic tests - all classes will show as FQCNs
+    private final CallGraph emptyGraph = CallGraph.builder().build();
 
     @Test
     void buildTree_groupsByCategory() {
@@ -22,7 +27,7 @@ class PortTreeTest {
                         List.of("CacheService", "Cache"))
         );
 
-        List<PortTree.CategoryNode> tree = PortTree.buildTree(findings);
+        List<PortTree.CategoryNode> tree = PortTree.buildTree(findings, emptyGraph);
 
         assertThat(tree).hasSize(2);
         assertThat(tree).extracting(PortTree.CategoryNode::categoryId)
@@ -43,7 +48,7 @@ class PortTreeTest {
                         List.of("MetadataStore", "RocksDB"))
         );
 
-        List<PortTree.CategoryNode> tree = PortTree.buildTree(findings);
+        List<PortTree.CategoryNode> tree = PortTree.buildTree(findings, emptyGraph);
 
         assertThat(tree).hasSize(1);
         PortTree.CategoryNode dbCategory = tree.get(0);
@@ -53,21 +58,50 @@ class PortTreeTest {
     }
 
     @Test
-    void buildTree_formatsPathsWithSimpleNames() {
+    void buildTree_formatsPathsWithFQCNsForNonProjectClasses() {
         List<Finding> findings = List.of(
                 createPathFinding("Path to serviceClientTypes",
                         "java.net.http.HttpClient",
                         List.of("com.example.MyService", "com.example.HttpWrapper", "java.net.http.HttpClient"))
         );
 
-        List<PortTree.CategoryNode> tree = PortTree.buildTree(findings);
+        // With empty graph, all classes show as FQCNs (treated as third-party)
+        List<PortTree.CategoryNode> tree = PortTree.buildTree(findings, emptyGraph);
 
         assertThat(tree).hasSize(1);
         PortTree.LeafTypeNode leafType = tree.get(0).leafTypes().get(0);
         assertThat(leafType.simpleLeafType()).isEqualTo("HttpClient");
 
         PortTree.PathEntry path = leafType.paths().get(0);
-        assertThat(path.pathString()).isEqualTo("MyService -> HttpWrapper -> HttpClient");
+        // All classes are FQCNs since none are in the graph as project classes
+        assertThat(path.pathString()).isEqualTo("com.example.MyService -> com.example.HttpWrapper -> java.net.http.HttpClient");
+    }
+
+    @Test
+    void buildTree_usesSimpleNamesForProjectClasses() {
+        // Create a graph with project classes
+        CallGraph graphWithProjectClasses = CallGraph.builder()
+                .addClass(ClassNode.builder()
+                        .fqn("com.example.MyService")
+                        .isProjectClass(true)
+                        .build())
+                .addClass(ClassNode.builder()
+                        .fqn("com.example.HttpWrapper")
+                        .isProjectClass(true)
+                        .build())
+                .build();
+
+        List<Finding> findings = List.of(
+                createPathFinding("Path to serviceClientTypes",
+                        "java.net.http.HttpClient",
+                        List.of("com.example.MyService", "com.example.HttpWrapper", "java.net.http.HttpClient"))
+        );
+
+        List<PortTree.CategoryNode> tree = PortTree.buildTree(findings, graphWithProjectClasses);
+
+        PortTree.PathEntry path = tree.get(0).leafTypes().get(0).paths().get(0);
+        // Project classes use simple names, third-party uses FQCN
+        assertThat(path.pathString()).isEqualTo("MyService -> HttpWrapper -> java.net.http.HttpClient");
     }
 
     @Test
@@ -79,7 +113,7 @@ class PortTreeTest {
                 createPathFinding("Path to externalStateTypes", "DB3", List.of("D", "DB3"))
         );
 
-        List<PortTree.CategoryNode> tree = PortTree.buildTree(findings);
+        List<PortTree.CategoryNode> tree = PortTree.buildTree(findings, emptyGraph);
 
         assertThat(tree).hasSize(2);
         // externalStateTypes has 3 paths, cacheTypes has 1
@@ -99,7 +133,7 @@ class PortTreeTest {
                         .build()
         );
 
-        List<PortTree.CategoryNode> tree = PortTree.buildTree(findings);
+        List<PortTree.CategoryNode> tree = PortTree.buildTree(findings, emptyGraph);
 
         assertThat(tree).hasSize(1);
         assertThat(tree.get(0).totalPaths()).isEqualTo(1);
@@ -116,7 +150,7 @@ class PortTreeTest {
                         .build()
         );
 
-        List<PortTree.CategoryNode> tree = PortTree.buildTree(findings);
+        List<PortTree.CategoryNode> tree = PortTree.buildTree(findings, emptyGraph);
 
         assertThat(tree).isEmpty();
     }

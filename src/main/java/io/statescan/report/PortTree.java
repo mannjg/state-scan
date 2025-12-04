@@ -1,5 +1,7 @@
 package io.statescan.report;
 
+import io.statescan.graph.CallGraph;
+import io.statescan.graph.ClassNode;
 import io.statescan.model.Finding;
 import io.statescan.util.TypeUtils;
 
@@ -77,9 +79,10 @@ public class PortTree {
      * - rootClass: The project class where the path starts
      *
      * @param pathFindings List of findings with reachability paths
+     * @param graph        CallGraph for determining project vs third-party classes (for FQCN display)
      * @return List of category nodes forming the tree
      */
-    public static List<CategoryNode> buildTree(List<Finding> pathFindings) {
+    public static List<CategoryNode> buildTree(List<Finding> pathFindings, CallGraph graph) {
         // Group by category (extracted from pattern "Path to XXX")
         Map<String, List<Finding>> byCategory = pathFindings.stream()
                 .filter(f -> f.pattern() != null && f.pattern().startsWith("Path to "))
@@ -104,7 +107,7 @@ public class PortTree {
                         .map(f -> new PathEntry(
                                 f.rootClass(),
                                 f.reachabilityPath(),
-                                formatPath(f.reachabilityPath())
+                                formatPath(f.reachabilityPath(), graph)
                         ))
                         .toList();
 
@@ -138,16 +141,37 @@ public class PortTree {
     }
 
     /**
-     * Formats a path as a string of simple class names joined by arrows.
-     * E.g., ["com.example.MyService", "com.example.DataRepo", "javax.sql.DataSource"]
-     * becomes "MyService -> DataRepo -> DataSource"
+     * Formats a path as a string of class names joined by arrows.
+     * <p>
+     * Uses hybrid formatting:
+     * - Project classes: simple name (user knows their code)
+     * - Third-party classes: FQCN (helps identify which library)
+     * <p>
+     * E.g., ["com.example.MyService", "org.apache.commons.pool.PooledConnection", "javax.sql.DataSource"]
+     * becomes "MyService -> org.apache.commons.pool.PooledConnection -> javax.sql.DataSource"
+     *
+     * @param path  List of fully qualified class names
+     * @param graph CallGraph for determining project vs third-party classes
      */
-    private static String formatPath(List<String> path) {
+    private static String formatPath(List<String> path, CallGraph graph) {
         if (path == null || path.isEmpty()) {
             return "";
         }
         return path.stream()
-                .map(TypeUtils::simpleClassName)
+                .map(fqn -> formatClassName(fqn, graph))
                 .collect(Collectors.joining(" -> "));
+    }
+
+    /**
+     * Formats a class name for display.
+     * Project classes use simple names, third-party classes use FQCNs.
+     */
+    private static String formatClassName(String fqn, CallGraph graph) {
+        Optional<ClassNode> cls = graph.getClass(fqn);
+        if (cls.isPresent() && cls.get().isProjectClass()) {
+            return TypeUtils.simpleClassName(fqn);
+        }
+        // Third-party class: show FQCN to help identify the library
+        return fqn;
     }
 }

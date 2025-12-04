@@ -293,7 +293,7 @@ public class StateScanCli implements Callable<Integer> {
                     .build();
 
             // Step 5: Output report
-            Reporter reporter = createReporter();
+            Reporter reporter = createReporter(reachableGraph);
             writeReport(report, reporter);
 
             // Determine exit code
@@ -348,9 +348,9 @@ public class StateScanCli implements Callable<Integer> {
         return defaultConfig;
     }
 
-    private Reporter createReporter() {
+    private Reporter createReporter(CallGraph graph) {
         return switch (outputFormat) {
-            case console -> new ConsoleReporter(!noColor, detailed);
+            case console -> new ConsoleReporter(!noColor, detailed, graph);
             case json -> new JsonReporter(true);
             case html -> new HtmlReporter();
         };

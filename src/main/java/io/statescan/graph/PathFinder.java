@@ -56,28 +56,40 @@ public class PathFinder {
 
     /**
      * Finds all paths from project roots to leaf types.
+     * <p>
+     * Only processes roots that are actual project classes (not third-party library classes).
+     * Uses a global visited set to avoid duplicate paths and cycles across traversals.
      *
      * @param projectRoots Set of FQNs that are considered project entry points
      * @return List of paths to stateful leaf types
      */
     public List<StatefulPath> findPaths(Set<String> projectRoots) {
         List<StatefulPath> results = new ArrayList<>();
+        Set<String> globalVisited = new HashSet<>();
 
         for (String root : projectRoots) {
-            bfsFromRoot(root, results);
+            // Skip non-project roots (defensive check)
+            if (!isProjectClass(root)) {
+                continue;
+            }
+            bfsFromRoot(root, results, globalVisited);
         }
 
-        return results;
+        return deduplicatePaths(results);
     }
 
     /**
      * Performs BFS from a single root to find all paths to leaf types.
+     *
+     * @param root          The project class to start from
+     * @param results       List to collect found paths
+     * @param globalVisited Shared visited set across all BFS traversals to avoid cycles and duplicates
      */
-    private void bfsFromRoot(String root, List<StatefulPath> results) {
+    private void bfsFromRoot(String root, List<StatefulPath> results, Set<String> globalVisited) {
         record TraversalState(String node, List<String> pathSoFar) {}
 
         Queue<TraversalState> queue = new LinkedList<>();
-        Set<String> visited = new HashSet<>();
+        Set<String> localVisited = new HashSet<>();
 
         queue.add(new TraversalState(root, List.of(root)));
 
@@ -85,7 +97,8 @@ public class PathFinder {
             TraversalState state = queue.poll();
             String current = state.node();
 
-            if (!visited.add(current)) {
+            // Skip if already visited locally (within this BFS)
+            if (!localVisited.add(current)) {
                 continue;
             }
 
@@ -104,9 +117,16 @@ public class PathFinder {
                 continue;
             }
 
+            // Skip further traversal if this node was already fully explored by another root
+            // This prevents duplicate sub-paths when multiple project classes reach the same library code
+            if (globalVisited.contains(current) && !isProjectClass(current)) {
+                continue;
+            }
+            globalVisited.add(current);
+
             // Get neighbors via all edge types
             for (String neighbor : getNeighbors(current)) {
-                if (!visited.contains(neighbor) && !isExcludedPackage(neighbor)) {
+                if (!localVisited.contains(neighbor) && !isExcludedPackage(neighbor)) {
                     List<String> newPath = new ArrayList<>(state.pathSoFar());
                     newPath.add(neighbor);
                     queue.add(new TraversalState(neighbor, newPath));
@@ -237,6 +257,25 @@ public class PathFinder {
     }
 
     /**
+     * Deduplicates paths by removing duplicate or redundant paths.
+     * Groups paths by leaf type and keeps unique paths based on their signature.
+     */
+    private List<StatefulPath> deduplicatePaths(List<StatefulPath> paths) {
+        // Use a set to track unique path signatures (root + path + leaf)
+        Set<String> seenSignatures = new HashSet<>();
+        List<StatefulPath> deduplicated = new ArrayList<>();
+
+        for (StatefulPath path : paths) {
+            String signature = path.root() + "|" + String.join("->", path.path()) + "|" + path.leafType();
+            if (seenSignatures.add(signature)) {
+                deduplicated.add(path);
+            }
+        }
+
+        return deduplicated;
+    }
+
+    /**
      * Checks if a package should be excluded from traversal.
      * We want to skip JDK internal packages but not javax.* types that are leaf types.
      */
@@ -258,5 +297,14 @@ public class PathFinder {
      */
     private boolean isJavaLangObject(String className) {
         return "java.lang.Object".equals(className);
+    }
+
+    /**
+     * Checks if a class belongs to the project (not a third-party library class).
+     */
+    private boolean isProjectClass(String className) {
+        return graph.getClass(className)
+                .map(ClassNode::isProjectClass)
+                .orElse(false);
     }
 }
