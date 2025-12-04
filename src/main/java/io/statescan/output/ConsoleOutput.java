@@ -90,7 +90,7 @@ public class ConsoleOutput {
 
         // Check if the actor's type is an interface or abstract class that needs resolution
         String typeFqn = actor.typeFqn();
-        String resolvedType = resolveType(typeFqn);
+        String resolvedType = resolveType(typeFqn, actor.type());
 
         // Print one line per method called
         for (String methodCalled : actor.methodsCalled().stream().sorted().toList()) {
@@ -105,8 +105,18 @@ public class ConsoleOutput {
     /**
      * Resolves an interface/abstract type to its implementation.
      * Returns the type with resolution info appended if applicable.
+     *
+     * @param typeFqn The fully qualified type name
+     * @param actorType The actor type - used to skip resolution for non-polymorphic calls
      */
-    private String resolveType(String typeFqn) {
+    private String resolveType(String typeFqn, ActorType actorType) {
+        // Static method calls and new object creation are NOT polymorphic
+        // - STATIC_CLASS: Interface.staticMethod() always calls the interface's method
+        // - NEW_OBJECT: new X() is definitively X, never an interface
+        if (actorType == ActorType.STATIC_CLASS || actorType == ActorType.NEW_OBJECT) {
+            return typeFqn;
+        }
+
         // Check if this type is in our scanned classes and needs resolution
         ClassInfo typeInfo = scanResult.classes().get(typeFqn);
         if (typeInfo == null || !typeInfo.needsResolution()) {
