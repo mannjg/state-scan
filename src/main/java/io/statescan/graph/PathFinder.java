@@ -25,20 +25,40 @@ public class PathFinder {
     private final LeafTypeConfig leafConfig;
 
     /**
+     * Internal record for tracking edge information during traversal.
+     * Captures the target class and the member (field/method) that leads to it.
+     */
+    private record EdgeInfo(String target, String memberName, EdgeType edgeType) {}
+
+    /**
      * Represents a path from a project root to a leaf type.
+     * Path now includes method/field information for each step.
      */
     public record StatefulPath(
             String root,           // Project class that starts the path
-            List<String> path,     // [root, node1, node2, ..., leaf]
+            List<PathStep> path,   // [root, node1, node2, ..., leaf] with member info
             String leafType,       // The leaf type reached (e.g., "javax.sql.DataSource")
             String leafCategory,   // Category from config (e.g., "externalStateTypes")
             RiskLevel riskLevel
     ) {
         /**
-         * Returns a human-readable path representation.
+         * Returns a human-readable path representation with method names.
+         * Format: "ClassName#method -> ClassName#method -> LeafType"
          */
         public String pathString() {
-            return String.join(" -> ", path);
+            return path.stream()
+                    .map(PathStep::formatted)
+                    .reduce((a, b) -> a + " -> " + b)
+                    .orElse("");
+        }
+
+        /**
+         * Returns just the class names (for backward compatibility).
+         */
+        public List<String> classNames() {
+            return path.stream()
+                    .map(PathStep::className)
+                    .toList();
         }
 
         /**
@@ -86,12 +106,13 @@ public class PathFinder {
      * @param globalVisited Shared visited set across all BFS traversals to avoid cycles and duplicates
      */
     private void bfsFromRoot(String root, List<StatefulPath> results, Set<String> globalVisited) {
-        record TraversalState(String node, List<String> pathSoFar) {}
+        record TraversalState(String node, List<PathStep> pathSoFar) {}
 
         Queue<TraversalState> queue = new LinkedList<>();
         Set<String> localVisited = new HashSet<>();
 
-        queue.add(new TraversalState(root, List.of(root)));
+        // Start with root node (no incoming edge)
+        queue.add(new TraversalState(root, List.of(PathStep.root(root))));
 
         while (!queue.isEmpty()) {
             TraversalState state = queue.poll();
@@ -124,66 +145,89 @@ public class PathFinder {
             }
             globalVisited.add(current);
 
-            // Get neighbors via all edge types
-            for (String neighbor : getNeighbors(current)) {
-                if (!localVisited.contains(neighbor) && !isExcludedPackage(neighbor)) {
-                    List<String> newPath = new ArrayList<>(state.pathSoFar());
-                    newPath.add(neighbor);
-                    queue.add(new TraversalState(neighbor, newPath));
+            // Get neighbors via all edge types (now with edge info)
+            for (EdgeInfo edge : getNeighborsWithEdges(current)) {
+                if (!localVisited.contains(edge.target()) && !isExcludedPackage(edge.target())) {
+                    List<PathStep> newPath = new ArrayList<>(state.pathSoFar());
+
+                    // Update the previous step with the member that leads to this neighbor
+                    if (!newPath.isEmpty()) {
+                        PathStep lastStep = newPath.get(newPath.size() - 1);
+                        // Replace last step with one that includes the outgoing member
+                        newPath.set(newPath.size() - 1, new PathStep(
+                                lastStep.className(),
+                                edge.memberName(),
+                                edge.edgeType()
+                        ));
+                    }
+
+                    // Add the new node (leaf status will be determined on next iteration)
+                    newPath.add(PathStep.root(edge.target()));
+                    queue.add(new TraversalState(edge.target(), newPath));
                 }
             }
         }
     }
 
     /**
-     * Gets all neighbor classes from the current class.
+     * Gets all neighbor classes from the current class, with edge information.
      * Follows field types, method invocations, inheritance, and DI bindings.
      */
-    private Set<String> getNeighbors(String className) {
-        Set<String> neighbors = new HashSet<>();
+    private Set<EdgeInfo> getNeighborsWithEdges(String className) {
+        Set<EdgeInfo> edges = new HashSet<>();
 
         Optional<ClassNode> clsOpt = graph.getClass(className);
         if (clsOpt.isEmpty()) {
-            return neighbors;
+            return edges;
         }
 
         ClassNode cls = clsOpt.get();
 
         // 1. Superclass
         if (cls.superclass() != null && !isJavaLangObject(cls.superclass())) {
-            neighbors.add(cls.superclass());
+            edges.add(new EdgeInfo(cls.superclass(), "extends", EdgeType.INHERITANCE));
         }
 
         // 2. Interfaces
-        neighbors.addAll(cls.interfaces());
+        for (String iface : cls.interfaces()) {
+            edges.add(new EdgeInfo(iface, "implements", EdgeType.INHERITANCE));
+        }
 
         // 3. Field types
         for (FieldNode field : cls.fields()) {
             String fieldType = extractTypeName(field.type());
             if (fieldType != null) {
-                neighbors.add(fieldType);
+                edges.add(new EdgeInfo(fieldType, field.name(), EdgeType.FIELD));
             }
         }
 
         // 4. Method invocation targets
         for (MethodNode method : cls.methods()) {
             for (MethodRef inv : method.invocations()) {
-                neighbors.add(inv.owner());
+                edges.add(new EdgeInfo(inv.owner(), inv.name(), EdgeType.INVOCATION));
             }
         }
 
         // 5. DI BINDING EDGES (critical addition!)
         // For each neighbor that's an interface with DI binding, also add implementations
-        Set<String> boundImpls = new HashSet<>();
-        for (String neighbor : neighbors) {
-            boundImpls.addAll(graph.getImplementations(neighbor));
+        Set<String> processedNeighbors = new HashSet<>();
+        for (EdgeInfo edge : new HashSet<>(edges)) {
+            processedNeighbors.add(edge.target());
+            for (String impl : graph.getImplementations(edge.target())) {
+                if (!processedNeighbors.contains(impl)) {
+                    edges.add(new EdgeInfo(impl, "@Inject", EdgeType.DI_BINDING));
+                }
+            }
         }
-        neighbors.addAll(boundImpls);
 
         // Also check if the current class itself has DI bindings
-        neighbors.addAll(graph.getImplementations(className));
+        for (String impl : graph.getImplementations(className)) {
+            if (!processedNeighbors.contains(impl)) {
+                edges.add(new EdgeInfo(impl, "@Inject", EdgeType.DI_BINDING));
+            }
+        }
 
-        return neighbors;
+        return edges;
     }
 
     /**
@@ -266,7 +310,12 @@ public class PathFinder {
         List<StatefulPath> deduplicated = new ArrayList<>();
 
         for (StatefulPath path : paths) {
-            String signature = path.root() + "|" + String.join("->", path.path()) + "|" + path.leafType();
+            // Include member names in signature for more accurate deduplication
+            String pathStr = path.path().stream()
+                    .map(step -> step.className() + (step.memberName() != null ? "#" + step.memberName() : ""))
+                    .reduce((a, b) -> a + "->" + b)
+                    .orElse("");
+            String signature = path.root() + "|" + pathStr + "|" + path.leafType();
             if (seenSignatures.add(signature)) {
                 deduplicated.add(path);
             }

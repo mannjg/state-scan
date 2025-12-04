@@ -74,6 +74,68 @@ class PathFinderTest {
     }
 
     @Test
+    void findPaths_includesMethodNamesInPath() {
+        // Create a graph with a multi-hop path to verify method/field names are captured
+        CallGraph graph = CallGraph.builder()
+                .addClass(ClassNode.builder()
+                        .fqn("com.example.MyService")
+                        .isProjectClass(true)
+                        .fields(Set.of(FieldNode.builder()
+                                .name("dataRepo")
+                                .type("Lcom/example/DataRepository;")
+                                .build()))
+                        .build())
+                .addClass(ClassNode.builder()
+                        .fqn("com.example.DataRepository")
+                        .isProjectClass(true)
+                        .fields(Set.of(FieldNode.builder()
+                                .name("dataSource")
+                                .type("Ljavax/sql/DataSource;")
+                                .build()))
+                        .build())
+                .addClass(ClassNode.builder()
+                        .fqn("javax.sql.DataSource")
+                        .isProjectClass(false)
+                        .build())
+                .build();
+
+        PathFinder pathFinder = new PathFinder(graph, leafConfig);
+
+        Set<String> projectRoots = Set.of("com.example.MyService");
+        List<PathFinder.StatefulPath> paths = pathFinder.findPaths(projectRoots);
+
+        // Should find path to DataSource
+        assertThat(paths).hasSize(1);
+        PathFinder.StatefulPath path = paths.get(0);
+
+        // Verify path structure
+        assertThat(path.path()).hasSize(3); // MyService -> DataRepository -> DataSource
+
+        // First step should have field name that leads to second step
+        PathStep firstStep = path.path().get(0);
+        assertThat(firstStep.className()).isEqualTo("com.example.MyService");
+        assertThat(firstStep.memberName()).isEqualTo("dataRepo");
+        assertThat(firstStep.edgeType()).isEqualTo(EdgeType.FIELD);
+
+        // Second step should have field name that leads to leaf
+        PathStep secondStep = path.path().get(1);
+        assertThat(secondStep.className()).isEqualTo("com.example.DataRepository");
+        assertThat(secondStep.memberName()).isEqualTo("dataSource");
+        assertThat(secondStep.edgeType()).isEqualTo(EdgeType.FIELD);
+
+        // Third step is the leaf (no outgoing member)
+        PathStep thirdStep = path.path().get(2);
+        assertThat(thirdStep.className()).isEqualTo("javax.sql.DataSource");
+        assertThat(thirdStep.memberName()).isNull();
+
+        // Verify formatted path includes field names
+        String pathString = path.pathString();
+        assertThat(pathString).contains("MyService#dataRepo");
+        assertThat(pathString).contains("DataRepository#dataSource");
+        assertThat(pathString).contains("DataSource");
+    }
+
+    @Test
     void findPaths_deduplicatesPaths() {
         // Create a graph where two project classes reach the same leaf via the same intermediate
         CallGraph graph = CallGraph.builder()
@@ -154,7 +216,8 @@ class PathFinderTest {
         // All returned paths must start with project class
         for (PathFinder.StatefulPath path : paths) {
             assertThat(path.root()).startsWith("com.example.");
-            assertThat(path.path().get(0)).isEqualTo(path.root());
+            // path.path() returns List<PathStep>, so get the className from the first step
+            assertThat(path.path().get(0).className()).isEqualTo(path.root());
         }
     }
 

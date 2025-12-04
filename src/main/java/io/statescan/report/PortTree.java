@@ -143,14 +143,15 @@ public class PortTree {
     /**
      * Formats a path as a string of class names joined by arrows.
      * <p>
+     * Path entries may now include method info in format "ClassName#method".
      * Uses hybrid formatting:
-     * - Project classes: simple name (user knows their code)
-     * - Third-party classes: FQCN (helps identify which library)
+     * - Project classes: simple name with method (user knows their code)
+     * - Third-party classes: FQCN with method (helps identify which library)
      * <p>
-     * E.g., ["com.example.MyService", "org.apache.commons.pool.PooledConnection", "javax.sql.DataSource"]
-     * becomes "MyService -> org.apache.commons.pool.PooledConnection -> javax.sql.DataSource"
+     * E.g., ["com.example.MyService#dataSource", "org.apache.commons.pool.GenericPool#borrowObject", "javax.sql.DataSource"]
+     * becomes "MyService#dataSource -> org.apache.commons.pool.GenericPool#borrowObject -> javax.sql.DataSource"
      *
-     * @param path  List of fully qualified class names
+     * @param path  List of formatted path entries (may include #method suffix)
      * @param graph CallGraph for determining project vs third-party classes
      */
     private static String formatPath(List<String> path, CallGraph graph) {
@@ -158,20 +159,33 @@ public class PortTree {
             return "";
         }
         return path.stream()
-                .map(fqn -> formatClassName(fqn, graph))
+                .map(entry -> formatPathEntry(entry, graph))
                 .collect(Collectors.joining(" -> "));
     }
 
     /**
-     * Formats a class name for display.
+     * Formats a path entry for display.
+     * Path entries may be "ClassName" or "ClassName#method".
      * Project classes use simple names, third-party classes use FQCNs.
      */
-    private static String formatClassName(String fqn, CallGraph graph) {
-        Optional<ClassNode> cls = graph.getClass(fqn);
+    private static String formatPathEntry(String entry, CallGraph graph) {
+        // Split into class name and optional method
+        String className;
+        String methodSuffix = "";
+        int hashIndex = entry.indexOf('#');
+        if (hashIndex >= 0) {
+            className = entry.substring(0, hashIndex);
+            methodSuffix = entry.substring(hashIndex); // includes the #
+        } else {
+            className = entry;
+        }
+
+        // Look up in graph to determine project vs third-party
+        Optional<ClassNode> cls = graph.getClass(className);
         if (cls.isPresent() && cls.get().isProjectClass()) {
-            return TypeUtils.simpleClassName(fqn);
+            return TypeUtils.simpleClassName(className) + methodSuffix;
         }
         // Third-party class: show FQCN to help identify the library
-        return fqn;
+        return className + methodSuffix;
     }
 }

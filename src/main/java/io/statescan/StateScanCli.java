@@ -10,6 +10,7 @@ import io.statescan.di.CDIBeanDiscovery;
 import io.statescan.di.GuiceBindingParser;
 import io.statescan.graph.CallGraph;
 import io.statescan.graph.PathFinder;
+import io.statescan.graph.PathStep;
 import io.statescan.graph.ReachabilityAnalyzer;
 import io.statescan.model.Finding;
 import io.statescan.model.RiskLevel;
@@ -512,6 +513,11 @@ public class StateScanCli implements Callable<Integer> {
         );
         String recommendation = getRecommendationForLeafCategory(path.leafCategory());
 
+        // Convert PathSteps to formatted strings (ClassName#method format)
+        List<String> formattedPath = path.path().stream()
+                .map(PathStep::formatted)
+                .toList();
+
         return Finding.builder()
                 .className(path.leafType())
                 .stateType(getStateTypeForLeafCategory(path.leafCategory()))
@@ -520,7 +526,7 @@ public class StateScanCli implements Callable<Integer> {
                 .description(description)
                 .recommendation(recommendation)
                 .detectorId("PathFinder")
-                .reachabilityPath(path.path())
+                .reachabilityPath(formattedPath)
                 .rootClass(path.root())
                 .build();
     }
