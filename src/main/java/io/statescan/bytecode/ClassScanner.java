@@ -7,9 +7,12 @@ import org.objectweb.asm.FieldVisitor;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * ClassVisitor that scans a class and builds a ClassInfo model.
@@ -21,6 +24,9 @@ public class ClassScanner extends ClassVisitor {
 
     private String className;
     private boolean isInterface;
+    private boolean isAbstract;
+    private String superClass;
+    private Set<String> implementedInterfaces = new HashSet<>();
     private final Map<String, String> fields = new HashMap<>();     // name -> type FQN
     private final Map<String, MethodInfo> methods = new HashMap<>(); // key -> MethodInfo
 
@@ -33,6 +39,19 @@ public class ClassScanner extends ClassVisitor {
                       String superName, String[] interfaces) {
         this.className = DescriptorParser.toFqn(name);
         this.isInterface = (access & Opcodes.ACC_INTERFACE) != 0;
+        this.isAbstract = (access & Opcodes.ACC_ABSTRACT) != 0;
+        
+        // Convert superName to FQN (null for java/lang/Object itself)
+        if (superName != null && !superName.equals("java/lang/Object")) {
+            this.superClass = DescriptorParser.toFqn(superName);
+        }
+        
+        // Convert interface internal names to FQNs
+        if (interfaces != null) {
+            Arrays.stream(interfaces)
+                .map(DescriptorParser::toFqn)
+                .forEach(implementedInterfaces::add);
+        }
 
         super.visit(version, access, name, signature, superName, interfaces);
     }
@@ -102,6 +121,14 @@ public class ClassScanner extends ClassVisitor {
         if (className == null) {
             return null;
         }
-        return new ClassInfo(className, methods, fields, isInterface);
+        return new ClassInfo(
+            className, 
+            methods, 
+            fields, 
+            isInterface, 
+            isAbstract, 
+            superClass, 
+            implementedInterfaces
+        );
     }
 }

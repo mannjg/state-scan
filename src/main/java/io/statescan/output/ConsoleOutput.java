@@ -4,6 +4,8 @@ import io.statescan.model.*;
 
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Outputs scan results to the console in a simple format.
@@ -12,6 +14,8 @@ public class ConsoleOutput {
 
     private boolean showEmptyMethods = false;
     private boolean showOnlyPublicMethods = false;
+    private ScanResult scanResult;
+    private Map<String, Set<String>> implementationMap;
 
     public ConsoleOutput showEmptyMethods(boolean show) {
         this.showEmptyMethods = show;
@@ -24,6 +28,9 @@ public class ConsoleOutput {
     }
 
     public void print(ScanResult result) {
+        this.scanResult = result;
+        this.implementationMap = result.buildImplementationMap();
+        
         // Sort classes by FQN
         List<ClassInfo> sortedClasses = result.allClasses()
             .sorted(Comparator.comparing(ClassInfo::fqn))
@@ -81,13 +88,43 @@ public class ConsoleOutput {
             case NEW_OBJECT -> "NEW";
         };
 
+        // Check if the actor's type is an interface or abstract class that needs resolution
+        String typeFqn = actor.typeFqn();
+        String resolvedType = resolveType(typeFqn);
+
         // Print one line per method called
         for (String methodCalled : actor.methodsCalled().stream().sorted().toList()) {
             System.out.printf("    %s %s %s#%s%n",
                 typeLabel,
                 actor.name(),
-                actor.typeFqn(),
+                resolvedType,
                 methodCalled);
+        }
+    }
+
+    /**
+     * Resolves an interface/abstract type to its implementation.
+     * Returns the type with resolution info appended if applicable.
+     */
+    private String resolveType(String typeFqn) {
+        // Check if this type is in our scanned classes and needs resolution
+        ClassInfo typeInfo = scanResult.classes().get(typeFqn);
+        if (typeInfo == null || !typeInfo.needsResolution()) {
+            // Type is not an interface/abstract we know about, or is already concrete
+            return typeFqn;
+        }
+
+        Set<String> implementations = implementationMap.get(typeFqn);
+        if (implementations == null || implementations.isEmpty()) {
+            // Interface/abstract with no known implementations
+            return typeFqn + " [UNRESOLVED]";
+        } else if (implementations.size() == 1) {
+            // Single implementation - auto-resolve
+            String impl = implementations.iterator().next();
+            return typeFqn + " -> " + impl;
+        } else {
+            // Multiple implementations - ambiguous
+            return typeFqn + " [AMBIGUOUS: " + implementations.size() + " impls]";
         }
     }
 }

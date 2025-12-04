@@ -17,6 +17,11 @@ Extracts class → method → actor relationships from Java bytecode.
     <ActorType> <name> <TypeFQN>#<methodCalled>
 ```
 
+When the actor's type is an interface or abstract class:
+- Single implementation: `Interface -> Implementation#method`
+- Multiple implementations: `Interface [AMBIGUOUS: N impls]#method`
+- No implementations: `Interface [UNRESOLVED]#method`
+
 ## Key Files
 - `ActorTrackingVisitor.java` - Core stack-tracking MethodVisitor
 - `ClassScanner.java` - ClassVisitor building ClassInfo
