@@ -6,10 +6,14 @@ import io.statescan.classpath.ClasspathResolver.ResolvedClasspath;
 import io.statescan.classpath.ClasspathResolverFactory;
 import io.statescan.config.LeafTypeConfig;
 import io.statescan.detectors.DetectorRegistry;
+import io.statescan.di.CDIBeanDiscovery;
+import io.statescan.di.GuiceBindingParser;
 import io.statescan.graph.CallGraph;
+import io.statescan.graph.PathFinder;
 import io.statescan.graph.ReachabilityAnalyzer;
 import io.statescan.model.Finding;
 import io.statescan.model.RiskLevel;
+import io.statescan.model.StateType;
 import io.statescan.model.ScanReport;
 import io.statescan.report.ConsoleReporter;
 import io.statescan.report.HtmlReporter;
@@ -27,9 +31,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Callable;
+import java.util.stream.Collectors;
 
 /**
  * CLI entry point for the state-scan tool.
@@ -76,10 +84,12 @@ public class StateScanCli implements Callable<Integer> {
 
     @Option(
             names = {"-p", "--package-prefix"},
-            description = "Package prefix to identify project classes (e.g., com.company). " +
-                    "If not specified, will attempt to detect from pom.xml."
+            description = "Package prefix(es) to identify project classes (e.g., com.company). " +
+                    "Comma-separated for multiple prefixes (e.g., com.company.service,com.company.shared). " +
+                    "If not specified, will attempt to detect from pom.xml.",
+            split = ","
     )
-    private String packagePrefix;
+    private List<String> packagePrefixes;
 
     @Option(
             names = {"-r", "--risk-threshold"},
@@ -164,32 +174,62 @@ public class StateScanCli implements Callable<Integer> {
             ClasspathResolver resolver = ClasspathResolverFactory.forProject(projectPath);
             ResolvedClasspath classpath = resolver.resolve(projectPath);
 
-            String effectivePackagePrefix = packagePrefix != null ? packagePrefix : classpath.detectedPackagePrefix();
-            log("  Detected package prefix: " + effectivePackagePrefix);
+            List<String> effectivePrefixes;
+            if (packagePrefixes != null && !packagePrefixes.isEmpty()) {
+                effectivePrefixes = packagePrefixes;
+            } else if (classpath.detectedPackagePrefix() != null && !classpath.detectedPackagePrefix().isEmpty()) {
+                effectivePrefixes = List.of(classpath.detectedPackagePrefix());
+            } else {
+                effectivePrefixes = List.of();
+            }
+            log("  Package prefix(es): " + (effectivePrefixes.isEmpty() ? "(none detected)" : String.join(", ", effectivePrefixes)));
             log("  Found " + classpath.dependencyJars().size() + " dependency JARs");
 
             // Step 2: Scan bytecode
             log("Scanning bytecode...");
             Set<String> excludes = excludePatterns != null ? Set.copyOf(excludePatterns) : Set.of();
-            BytecodeScanner scanner = new BytecodeScanner(effectivePackagePrefix, excludes);
+            BytecodeScanner scanner = new BytecodeScanner(effectivePrefixes, excludes);
             // Use multi-directory scanning for multi-module Maven projects
-            CallGraph fullGraph = scanner.scanMultiple(classpath.allProjectClassesDirs(), classpath.dependencyJars());
+            CallGraph scannedGraph = scanner.scanMultiple(classpath.allProjectClassesDirs(), classpath.dependencyJars());
 
             log("  Scanned " + scanner.getClassesScanned() + " classes from " +
                     scanner.getJarsScanned() + " JARs");
 
-            // Step 3: Reachability analysis (tree-shaking)
+            // Step 3: Extract DI bindings (Guice, CDI)
+            log("Extracting DI bindings...");
+            Map<String, Set<String>> diBindings = extractDIBindings(scannedGraph);
+            CallGraph fullGraph = scannedGraph.withDIBindings(diBindings);
+
+            log("  Found " + diBindings.size() + " DI binding relationships");
+
+            // Step 4: Reachability analysis (tree-shaking)
             log("Analyzing reachability...");
-            ReachabilityAnalyzer reachabilityAnalyzer = new ReachabilityAnalyzer(fullGraph, effectivePackagePrefix);
-            CallGraph reachableGraph = reachabilityAnalyzer.getReachableGraph();
+            ReachabilityAnalyzer reachabilityAnalyzer = new ReachabilityAnalyzer(fullGraph, effectivePrefixes);
+            Set<String> reachableClasses = reachabilityAnalyzer.analyzeReachability();
+            CallGraph reachableGraph = fullGraph.filterTo(reachableClasses);
 
             log("  " + reachableGraph.classCount() + " reachable classes (of " +
                     fullGraph.classCount() + " total)");
 
-            // Step 4: Run detectors
+            // Step 5: Run detectors (Mode 1: Internal state detection)
             log("Detecting stateful patterns...");
             DetectorRegistry detectors = DetectorRegistry.createDefault();
-            List<Finding> allFindings = detectors.runAll(reachableGraph, leafConfig);
+            List<Finding> detectorFindings = detectors.runAll(reachableGraph, leafConfig, reachableClasses);
+
+            // Step 6: Run PathFinder (Mode 2: External ports detection)
+            log("Finding paths to external state...");
+            PathFinder pathFinder = new PathFinder(reachableGraph, leafConfig);
+            Set<String> projectRoots = reachableGraph.projectClasses().stream()
+                    .map(cls -> cls.fqn())
+                    .collect(Collectors.toSet());
+            List<PathFinder.StatefulPath> paths = pathFinder.findPaths(projectRoots);
+            List<Finding> pathFindings = convertPathsToFindings(paths);
+
+            log("  Found " + paths.size() + " paths to external state");
+
+            // Combine findings from both modes
+            List<Finding> allFindings = new ArrayList<>(detectorFindings);
+            allFindings.addAll(pathFindings);
 
             // Filter by risk level and exclude patterns
             List<Finding> findings = allFindings.stream()
@@ -205,6 +245,30 @@ public class StateScanCli implements Callable<Integer> {
                     " total, filtered to " + minRisk + "+" +
                     (excludedCount > 0 ? ", " + excludedCount + " excluded by pattern" : "") + ")");
 
+            // Diagnostic output for zero findings
+            if (findings.isEmpty() && outputFormat != OutputFormat.json) {
+                long projectClassCount = reachableGraph.allClasses().stream()
+                        .filter(c -> c.isProjectClass())
+                        .count();
+
+                if (projectClassCount == 0) {
+                    System.err.println();
+                    System.err.println("⚠ WARNING: No project classes found in reachable graph!");
+                    System.err.println("  Package prefix(es): " + (effectivePrefixes.isEmpty() ? "(none)" : String.join(", ", effectivePrefixes)));
+                    System.err.println("  Troubleshooting tips:");
+                    System.err.println("    - Ensure project is compiled (mvn compile or gradle build)");
+                    System.err.println("    - Check that --package-prefix matches your code's package structure");
+                    System.err.println("    - For multi-module projects, use comma-separated prefixes:");
+                    System.err.println("      --package-prefix com.company.service,com.company.shared");
+                } else {
+                    System.out.println();
+                    System.out.println("✓ No stateful patterns detected in " + projectClassCount + " project classes.");
+                    if (verbose) {
+                        System.out.println("  Use --verbose to see detailed scanning information.");
+                    }
+                }
+            }
+
             // Build report
             Duration duration = Duration.between(startTime, Instant.now());
             ScanReport report = ScanReport.builder()
@@ -216,7 +280,7 @@ public class StateScanCli implements Callable<Integer> {
                     .jarsScanned(scanner.getJarsScanned())
                     .findings(findings)
                     .configuration(new ScanReport.ScanConfiguration(
-                            effectivePackagePrefix,
+                            String.join(",", effectivePrefixes),
                             minRisk,
                             excludePatterns != null ? excludePatterns : List.of()
                     ))
@@ -375,6 +439,106 @@ public class StateScanCli implements Callable<Integer> {
         }
 
         return null;
+    }
+
+    /**
+     * Extracts DI bindings from Guice modules and CDI beans.
+     */
+    private Map<String, Set<String>> extractDIBindings(CallGraph graph) {
+        Map<String, Set<String>> allBindings = new HashMap<>();
+
+        // Extract Guice bindings
+        GuiceBindingParser guiceParser = new GuiceBindingParser();
+        Map<String, Set<String>> guiceBindings = guiceParser.extractAllBindings(graph);
+        guiceBindings.forEach((iface, impls) ->
+                allBindings.computeIfAbsent(iface, k -> new java.util.HashSet<>()).addAll(impls));
+
+        // Extract CDI bindings
+        CDIBeanDiscovery cdiDiscovery = new CDIBeanDiscovery();
+        Map<String, Set<String>> cdiBindings = cdiDiscovery.discoverBindings(graph);
+        cdiBindings.forEach((iface, impls) ->
+                allBindings.computeIfAbsent(iface, k -> new java.util.HashSet<>()).addAll(impls));
+
+        return allBindings;
+    }
+
+    /**
+     * Converts PathFinder results to Finding objects.
+     */
+    private List<Finding> convertPathsToFindings(List<PathFinder.StatefulPath> paths) {
+        return paths.stream()
+                .map(this::pathToFinding)
+                .toList();
+    }
+
+    /**
+     * Converts a single StatefulPath to a Finding.
+     */
+    private Finding pathToFinding(PathFinder.StatefulPath path) {
+        String pattern = "Path to " + path.leafCategory();
+        String description = String.format(
+                "Project class %s has a path to external state type %s",
+                path.root(),
+                path.leafType()
+        );
+        String recommendation = getRecommendationForLeafCategory(path.leafCategory());
+
+        return Finding.builder()
+                .className(path.leafType())
+                .stateType(getStateTypeForLeafCategory(path.leafCategory()))
+                .riskLevel(path.riskLevel())
+                .pattern(pattern)
+                .description(description)
+                .recommendation(recommendation)
+                .detectorId("PathFinder")
+                .reachabilityPath(path.path())
+                .rootClass(path.root())
+                .build();
+    }
+
+    /**
+     * Maps leaf category to StateType.
+     */
+    private StateType getStateTypeForLeafCategory(String category) {
+        return switch (category) {
+            case "externalStateTypes" -> StateType.EXTERNAL_SERVICE;
+            case "serviceClientTypes", "grpcTypes" -> StateType.EXTERNAL_SERVICE;
+            case "cacheTypes" -> StateType.IN_MEMORY;
+            case "fileStateTypes" -> StateType.FILE_BASED;
+            case "threadLocalTypes" -> StateType.THREAD_LOCAL;
+            case "resilienceTypes" -> StateType.EXTERNAL_SERVICE;
+            default -> StateType.UNKNOWN;
+        };
+    }
+
+    /**
+     * Gets recommendation text for a leaf category.
+     */
+    private String getRecommendationForLeafCategory(String category) {
+        return switch (category) {
+            case "externalStateTypes" ->
+                    "Ensure database connections are properly managed and connection pools are thread-safe. " +
+                            "Consider using a connection pool that supports distributed environments.";
+            case "serviceClientTypes" ->
+                    "HTTP clients should be stateless or use connection pooling. " +
+                            "Ensure client instances are thread-safe if shared across requests.";
+            case "grpcTypes" ->
+                    "gRPC clients maintain connections. Ensure proper channel management " +
+                            "and consider load balancing for horizontal scaling.";
+            case "cacheTypes" ->
+                    "In-memory caches are not shared across instances. " +
+                            "Consider using distributed caching (Redis, Hazelcast) for horizontal scaling.";
+            case "fileStateTypes" ->
+                    "File-based state is local to each instance. " +
+                            "Consider using distributed storage or a database for shared state.";
+            case "threadLocalTypes" ->
+                    "ThreadLocal state is tied to specific threads. " +
+                            "Ensure proper cleanup and consider if this state needs to be shared.";
+            case "resilienceTypes" ->
+                    "Circuit breakers and rate limiters may have local state. " +
+                            "Consider distributed implementations for consistent behavior across instances.";
+            default -> "Review this dependency for stateful behavior that may affect horizontal scaling.";
+        };
     }
 
     public static void main(String[] args) {

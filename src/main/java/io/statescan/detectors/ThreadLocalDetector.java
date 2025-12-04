@@ -10,6 +10,7 @@ import io.statescan.model.StateType;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Detects usage of ThreadLocal storage.
@@ -33,11 +34,12 @@ public class ThreadLocalDetector implements Detector {
     }
 
     @Override
-    public List<Finding> detect(CallGraph graph, LeafTypeConfig config) {
+    public List<Finding> detect(CallGraph graph, LeafTypeConfig config, Set<String> reachableClasses) {
         List<Finding> findings = new ArrayList<>();
 
         for (ClassNode cls : graph.allClasses()) {
-            if (!cls.isProjectClass()) {
+            // Only analyze classes reachable from project roots
+            if (!reachableClasses.contains(cls.fqn())) {
                 continue;
             }
 

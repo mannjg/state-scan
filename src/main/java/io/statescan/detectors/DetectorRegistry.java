@@ -30,7 +30,8 @@ public class DetectorRegistry {
                 new ThreadLocalDetector(),
                 new ExternalStateDetector(),
                 new ServiceClientDetector(),
-                new ResilienceStateDetector()
+                new ResilienceStateDetector(),
+                new FileStateDetector()
         ));
     }
 
@@ -44,15 +45,16 @@ public class DetectorRegistry {
     /**
      * Runs all enabled detectors and returns aggregated findings.
      *
-     * @param graph  The call graph to analyze
-     * @param config The leaf type configuration
+     * @param graph            The call graph to analyze
+     * @param config           The leaf type configuration
+     * @param reachableClasses Set of FQNs reachable from project roots (for filtering)
      * @return All findings from all detectors
      */
-    public List<Finding> runAll(CallGraph graph, LeafTypeConfig config) {
+    public List<Finding> runAll(CallGraph graph, LeafTypeConfig config, Set<String> reachableClasses) {
         List<Finding> allFindings = new ArrayList<>();
         for (Detector detector : detectors) {
             if (detector.enabledByDefault()) {
-                List<Finding> findings = detector.detect(graph, config);
+                List<Finding> findings = detector.detect(graph, config, reachableClasses);
                 allFindings.addAll(findings);
             }
         }
@@ -61,12 +63,18 @@ public class DetectorRegistry {
 
     /**
      * Runs specific detectors by ID.
+     *
+     * @param graph            The call graph to analyze
+     * @param config           The leaf type configuration
+     * @param reachableClasses Set of FQNs reachable from project roots (for filtering)
+     * @param detectorIds      IDs of detectors to run
+     * @return All findings from specified detectors
      */
-    public List<Finding> run(CallGraph graph, LeafTypeConfig config, Set<String> detectorIds) {
+    public List<Finding> run(CallGraph graph, LeafTypeConfig config, Set<String> reachableClasses, Set<String> detectorIds) {
         List<Finding> allFindings = new ArrayList<>();
         for (Detector detector : detectors) {
             if (detectorIds.contains(detector.id())) {
-                List<Finding> findings = detector.detect(graph, config);
+                List<Finding> findings = detector.detect(graph, config, reachableClasses);
                 allFindings.addAll(findings);
             }
         }

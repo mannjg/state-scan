@@ -61,6 +61,19 @@ externalStateTypes:
   - "com.rabbitmq.client.Connection"
   - "com.rabbitmq.client.Channel"
 
+  # jOOQ
+  - "org.jooq.DSLContext"
+  - "org.jooq.Configuration"
+  - "org.jooq.impl.DSL"
+
+  # Quarkus Panache (Hibernate wrapper)
+  - "io.quarkus.hibernate.orm.panache.PanacheEntity"
+  - "io.quarkus.hibernate.orm.panache.PanacheRepository"
+  - "io.quarkus.hibernate.orm.panache.PanacheEntityBase"
+  - "io.quarkus.hibernate.reactive.panache.PanacheEntity"
+  - "io.quarkus.hibernate.reactive.panache.PanacheRepository"
+  - "io.quarkus.hibernate.reactive.panache.PanacheEntityBase"
+
 # HTTP/REST Client types (external service dependencies)
 serviceClientTypes:
   # JAX-RS Client
@@ -88,6 +101,10 @@ serviceClientTypes:
   # Retrofit
   - "retrofit2.Retrofit"
   - "retrofit2.Call"
+
+  # Quarkus REST Client
+  - "io.quarkus.rest.client.reactive.QuarkusRestClientBuilder"
+  - "org.eclipse.microprofile.rest.client.RestClientBuilder"
 
 # gRPC types
 grpcTypes:

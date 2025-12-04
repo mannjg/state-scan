@@ -18,18 +18,24 @@ import java.util.stream.Stream;
  */
 public class BytecodeScanner {
 
-    private final String projectPackagePrefix;
+    private final List<String> projectPackagePrefixes;
     private final Set<String> excludePatterns;
 
     private int classesScanned = 0;
     private int jarsScanned = 0;
 
     public BytecodeScanner(String projectPackagePrefix) {
-        this(projectPackagePrefix, Set.of());
+        this(projectPackagePrefix != null && !projectPackagePrefix.isEmpty()
+                ? List.of(projectPackagePrefix) : List.of(), Set.of());
     }
 
     public BytecodeScanner(String projectPackagePrefix, Set<String> excludePatterns) {
-        this.projectPackagePrefix = projectPackagePrefix != null ? projectPackagePrefix : "";
+        this(projectPackagePrefix != null && !projectPackagePrefix.isEmpty()
+                ? List.of(projectPackagePrefix) : List.of(), excludePatterns);
+    }
+
+    public BytecodeScanner(List<String> projectPackagePrefixes, Set<String> excludePatterns) {
+        this.projectPackagePrefixes = projectPackagePrefixes != null ? List.copyOf(projectPackagePrefixes) : List.of();
         this.excludePatterns = excludePatterns != null ? excludePatterns : Set.of();
     }
 
@@ -169,14 +175,24 @@ public class BytecodeScanner {
     }
 
     /**
-     * Checks if a class belongs to the project package.
+     * Checks if a class belongs to any of the project packages.
      * Excludes shaded/vendored dependencies that are relocated into the project namespace.
      */
     private boolean isProjectPackage(String className) {
-        if (projectPackagePrefix.isEmpty()) {
+        if (projectPackagePrefixes.isEmpty()) {
             return false; // Can't determine without a prefix
         }
-        if (!className.startsWith(projectPackagePrefix)) {
+
+        // Check if class matches any of the configured prefixes
+        boolean matchesPrefix = false;
+        for (String prefix : projectPackagePrefixes) {
+            if (className.startsWith(prefix)) {
+                matchesPrefix = true;
+                break;
+            }
+        }
+
+        if (!matchesPrefix) {
             return false;
         }
 

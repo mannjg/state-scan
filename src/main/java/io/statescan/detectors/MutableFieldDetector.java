@@ -6,8 +6,11 @@ import io.statescan.model.Finding;
 import io.statescan.model.RiskLevel;
 import io.statescan.model.StateType;
 
-import java.util.*;
-import java.util.regex.Pattern;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Detects mutable fields in classes that are bound as singletons via Guice modules.
@@ -36,11 +39,11 @@ public class MutableFieldDetector implements Detector {
     }
 
     @Override
-    public List<Finding> detect(CallGraph graph, LeafTypeConfig config) {
+    public List<Finding> detect(CallGraph graph, LeafTypeConfig config, Set<String> reachableClasses) {
         List<Finding> findings = new ArrayList<>();
 
         // First, find all Guice modules and extract singleton bindings
-        Map<String, ModuleBinding> singletonBindings = extractModuleBindings(graph, config);
+        Map<String, ModuleBinding> singletonBindings = extractModuleBindings(graph, config, reachableClasses);
 
         // Then analyze each bound class for mutable state
         for (Map.Entry<String, ModuleBinding> entry : singletonBindings.entrySet()) {
@@ -69,11 +72,12 @@ public class MutableFieldDetector implements Detector {
      * Extracts singleton bindings from Guice modules.
      * This is a simplified heuristic based on method invocation patterns.
      */
-    private Map<String, ModuleBinding> extractModuleBindings(CallGraph graph, LeafTypeConfig config) {
+    private Map<String, ModuleBinding> extractModuleBindings(CallGraph graph, LeafTypeConfig config, Set<String> reachableClasses) {
         Map<String, ModuleBinding> bindings = new HashMap<>();
 
         for (ClassNode cls : graph.allClasses()) {
-            if (!isGuiceModule(cls, config)) {
+            // Only analyze reachable Guice modules
+            if (!reachableClasses.contains(cls.fqn()) || !isGuiceModule(cls, config)) {
                 continue;
             }
 

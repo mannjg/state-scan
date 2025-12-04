@@ -9,6 +9,7 @@ import io.statescan.model.RiskLevel;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -23,6 +24,17 @@ class StaticStateDetectorTest {
     void setUp() {
         detector = new StaticStateDetector();
         config = LeafTypeConfig.loadDefault();
+    }
+
+    /**
+     * Helper to create reachable classes set for given class nodes.
+     */
+    private Set<String> reachableFrom(ClassNode... classes) {
+        Set<String> reachable = new HashSet<>();
+        for (ClassNode c : classes) {
+            reachable.add(c.fqn());
+        }
+        return reachable;
     }
 
     @Test
@@ -49,7 +61,7 @@ class StaticStateDetectorTest {
                 .addClass(classNode)
                 .build();
 
-        List<Finding> findings = detector.detect(graph, config);
+        List<Finding> findings = detector.detect(graph, config, reachableFrom(classNode));
 
         assertThat(findings).hasSize(1);
         assertThat(findings.get(0).className()).isEqualTo("com.example.MyClass");
@@ -76,7 +88,7 @@ class StaticStateDetectorTest {
                 .addClass(classNode)
                 .build();
 
-        List<Finding> findings = detector.detect(graph, config);
+        List<Finding> findings = detector.detect(graph, config, reachableFrom(classNode));
 
         assertThat(findings).hasSize(1);
         assertThat(findings.get(0).fieldName()).isEqualTo("ITEMS");
@@ -101,7 +113,7 @@ class StaticStateDetectorTest {
                 .addClass(classNode)
                 .build();
 
-        List<Finding> findings = detector.detect(graph, config);
+        List<Finding> findings = detector.detect(graph, config, reachableFrom(classNode));
 
         assertThat(findings).hasSize(1);
         assertThat(findings.get(0).riskLevel()).isEqualTo(RiskLevel.CRITICAL);
@@ -126,7 +138,7 @@ class StaticStateDetectorTest {
                 .addClass(classNode)
                 .build();
 
-        List<Finding> findings = detector.detect(graph, config);
+        List<Finding> findings = detector.detect(graph, config, reachableFrom(classNode));
 
         assertThat(findings).isEmpty();
     }
@@ -150,13 +162,13 @@ class StaticStateDetectorTest {
                 .addClass(classNode)
                 .build();
 
-        List<Finding> findings = detector.detect(graph, config);
+        List<Finding> findings = detector.detect(graph, config, reachableFrom(classNode));
 
         assertThat(findings).isEmpty();
     }
 
     @Test
-    void detect_ignoresNonProjectClasses() {
+    void detect_ignoresNonReachableClasses() {
         FieldNode field = FieldNode.builder()
                 .name("CACHE")
                 .type("Ljava/util/HashMap;")
@@ -174,7 +186,8 @@ class StaticStateDetectorTest {
                 .addClass(classNode)
                 .build();
 
-        List<Finding> findings = detector.detect(graph, config);
+        // Class is in graph but NOT in reachable set - should be ignored
+        List<Finding> findings = detector.detect(graph, config, Set.of());
 
         assertThat(findings).isEmpty();
     }
@@ -198,7 +211,7 @@ class StaticStateDetectorTest {
                 .addClass(classNode)
                 .build();
 
-        List<Finding> findings = detector.detect(graph, config);
+        List<Finding> findings = detector.detect(graph, config, reachableFrom(classNode));
 
         assertThat(findings).isEmpty();
     }
@@ -222,7 +235,7 @@ class StaticStateDetectorTest {
                 .addClass(classNode)
                 .build();
 
-        List<Finding> findings = detector.detect(graph, config);
+        List<Finding> findings = detector.detect(graph, config, reachableFrom(classNode));
 
         assertThat(findings).hasSize(1);
         assertThat(findings.get(0).fieldName()).isEqualTo("COUNTER");
@@ -248,7 +261,7 @@ class StaticStateDetectorTest {
                 .addClass(classNode)
                 .build();
 
-        List<Finding> findings = detector.detect(graph, config);
+        List<Finding> findings = detector.detect(graph, config, reachableFrom(classNode));
 
         assertThat(findings).isEmpty();
     }
@@ -272,7 +285,7 @@ class StaticStateDetectorTest {
                 .addClass(classNode)
                 .build();
 
-        List<Finding> findings = detector.detect(graph, config);
+        List<Finding> findings = detector.detect(graph, config, reachableFrom(classNode));
 
         // StaticStateDetector only looks at static fields
         assertThat(findings).isEmpty();

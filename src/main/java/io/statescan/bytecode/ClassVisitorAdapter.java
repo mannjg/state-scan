@@ -119,6 +119,7 @@ public class ClassVisitorAdapter extends ClassVisitor {
                         .descriptor(descriptor)
                         .invocations(methodAdapter.getInvocations())
                         .fieldAccesses(methodAdapter.getFieldAccesses())
+                        .classConstantRefs(methodAdapter.getClassConstantRefs())
                         .annotations(methodAnnotations)
                         .isStatic(isStatic)
                         .isPublic(isPublic)

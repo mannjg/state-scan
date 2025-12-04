@@ -5,20 +5,22 @@ import java.util.Set;
 /**
  * Represents a method in a class.
  *
- * @param name          Method name (e.g., "configure", "<init>")
- * @param descriptor    Method descriptor (e.g., "(Ljava/lang/String;)V")
- * @param invocations   Set of methods this method calls
- * @param fieldAccesses Set of fields this method accesses
- * @param annotations   Set of annotation class names on this method
- * @param isStatic      Whether the method is static
- * @param isPublic      Whether the method is public
- * @param isAbstract    Whether the method is abstract
+ * @param name              Method name (e.g., "configure", "<init>")
+ * @param descriptor        Method descriptor (e.g., "(Ljava/lang/String;)V")
+ * @param invocations       Set of methods this method calls
+ * @param fieldAccesses     Set of fields this method accesses
+ * @param classConstantRefs Set of class constants referenced via LDC (e.g., SomeClass.class)
+ * @param annotations       Set of annotation class names on this method
+ * @param isStatic          Whether the method is static
+ * @param isPublic          Whether the method is public
+ * @param isAbstract        Whether the method is abstract
  */
 public record MethodNode(
         String name,
         String descriptor,
         Set<MethodRef> invocations,
         Set<FieldRef> fieldAccesses,
+        Set<String> classConstantRefs,
         Set<String> annotations,
         boolean isStatic,
         boolean isPublic,
@@ -40,6 +42,11 @@ public record MethodNode(
             fieldAccesses = Set.of();
         } else {
             fieldAccesses = Set.copyOf(fieldAccesses);
+        }
+        if (classConstantRefs == null) {
+            classConstantRefs = Set.of();
+        } else {
+            classConstantRefs = Set.copyOf(classConstantRefs);
         }
         if (annotations == null) {
             annotations = Set.of();
@@ -128,6 +135,7 @@ public record MethodNode(
         private String descriptor;
         private Set<MethodRef> invocations = Set.of();
         private Set<FieldRef> fieldAccesses = Set.of();
+        private Set<String> classConstantRefs = Set.of();
         private Set<String> annotations = Set.of();
         private boolean isStatic;
         private boolean isPublic;
@@ -150,6 +158,11 @@ public record MethodNode(
 
         public Builder fieldAccesses(Set<FieldRef> fieldAccesses) {
             this.fieldAccesses = fieldAccesses;
+            return this;
+        }
+
+        public Builder classConstantRefs(Set<String> classConstantRefs) {
+            this.classConstantRefs = classConstantRefs;
             return this;
         }
 
@@ -176,7 +189,7 @@ public record MethodNode(
         public MethodNode build() {
             return new MethodNode(
                     name, descriptor, invocations, fieldAccesses,
-                    annotations, isStatic, isPublic, isAbstract
+                    classConstantRefs, annotations, isStatic, isPublic, isAbstract
             );
         }
     }

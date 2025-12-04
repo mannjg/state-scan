@@ -8,7 +8,9 @@ import io.statescan.model.Finding;
 import io.statescan.model.RiskLevel;
 import io.statescan.model.StateType;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
 
 /**
  * Detects singleton-scoped classes that contain mutable state.
@@ -29,12 +31,12 @@ public class SingletonDetector implements Detector {
     }
 
     @Override
-    public List<Finding> detect(CallGraph graph, LeafTypeConfig config) {
+    public List<Finding> detect(CallGraph graph, LeafTypeConfig config, Set<String> reachableClasses) {
         List<Finding> findings = new ArrayList<>();
 
         for (ClassNode cls : graph.allClasses()) {
-            // Only analyze project classes
-            if (!cls.isProjectClass()) {
+            // Only analyze classes reachable from project roots
+            if (!reachableClasses.contains(cls.fqn())) {
                 continue;
             }
 

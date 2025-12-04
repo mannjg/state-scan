@@ -9,7 +9,7 @@ import java.util.*;
 public class ReachabilityAnalyzer {
 
     private final CallGraph graph;
-    private final String projectPackagePrefix;
+    private final List<String> projectPackagePrefixes;
 
     /**
      * Creates a reachability analyzer.
@@ -18,8 +18,19 @@ public class ReachabilityAnalyzer {
      * @param projectPackagePrefix Package prefix to identify project classes (e.g., "com.company")
      */
     public ReachabilityAnalyzer(CallGraph graph, String projectPackagePrefix) {
+        this(graph, projectPackagePrefix != null && !projectPackagePrefix.isEmpty()
+                ? List.of(projectPackagePrefix) : List.of());
+    }
+
+    /**
+     * Creates a reachability analyzer with multiple package prefixes.
+     *
+     * @param graph                  The complete call graph
+     * @param projectPackagePrefixes Package prefixes to identify project classes
+     */
+    public ReachabilityAnalyzer(CallGraph graph, List<String> projectPackagePrefixes) {
         this.graph = graph;
-        this.projectPackagePrefix = projectPackagePrefix != null ? projectPackagePrefix : "";
+        this.projectPackagePrefixes = projectPackagePrefixes != null ? List.copyOf(projectPackagePrefixes) : List.of();
     }
 
     /**
@@ -81,6 +92,13 @@ public class ReachabilityAnalyzer {
                 if (fieldType != null) {
                     addIfNew(fieldType, reachable, workQueue);
                 }
+            }
+
+            // Follow DI binding edges (Guice, CDI)
+            // For each interface/abstract class we've reached, follow bindings to implementations
+            Set<String> implementations = graph.getImplementations(current);
+            for (String impl : implementations) {
+                addIfNew(impl, reachable, workQueue);
             }
         }
 
@@ -154,6 +172,13 @@ public class ReachabilityAnalyzer {
                             current + "." + field.name(), nextDepth, reachabilityMap, workQueue);
                 }
             }
+
+            // Follow DI binding edges (Guice, CDI)
+            Set<String> implementations = graph.getImplementations(current);
+            for (String impl : implementations) {
+                addWithReason(impl, ReachabilityReason.DI_BINDING,
+                        current, nextDepth, reachabilityMap, workQueue);
+            }
         }
 
         return new ReachabilityResult(reachabilityMap);
@@ -183,8 +208,10 @@ public class ReachabilityAnalyzer {
         if (cls.isProjectClass()) {
             return true;
         }
-        if (!projectPackagePrefix.isEmpty()) {
-            return cls.fqn().startsWith(projectPackagePrefix);
+        for (String prefix : projectPackagePrefixes) {
+            if (cls.fqn().startsWith(prefix)) {
+                return true;
+            }
         }
         return false;
     }
@@ -227,7 +254,8 @@ public class ReachabilityAnalyzer {
         IMPLEMENTS,      // Interface implemented by a reachable class
         METHOD_CALL,     // Called by a method in a reachable class
         FIELD_TYPE,      // Type of a field in a reachable class
-        ANNOTATION       // Annotation on a reachable class/method/field
+        ANNOTATION,      // Annotation on a reachable class/method/field
+        DI_BINDING       // Implementation bound via DI (Guice, CDI)
     }
 
     /**

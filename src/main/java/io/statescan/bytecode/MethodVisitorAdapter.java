@@ -4,17 +4,22 @@ import io.statescan.graph.FieldRef;
 import io.statescan.graph.MethodRef;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.Type;
 
 import java.util.HashSet;
 import java.util.Set;
 
 /**
- * ASM MethodVisitor that extracts method invocations and field accesses.
+ * ASM MethodVisitor that extracts method invocations, field accesses, and class constant references.
+ * <p>
+ * Class constants are captured from LDC instructions (e.g., {@code SomeClass.class} in source code).
+ * This is critical for extracting Guice binding information like {@code bind(Interface.class).to(Impl.class)}.
  */
 public class MethodVisitorAdapter extends MethodVisitor {
 
     private final Set<MethodRef> invocations = new HashSet<>();
     private final Set<FieldRef> fieldAccesses = new HashSet<>();
+    private final Set<String> classConstantRefs = new HashSet<>();
 
     public MethodVisitorAdapter() {
         super(Opcodes.ASM9);
@@ -47,6 +52,20 @@ public class MethodVisitorAdapter extends MethodVisitor {
     }
 
     @Override
+    public void visitLdcInsn(Object value) {
+        // Capture class constants loaded via LDC instruction
+        // This captures SomeClass.class references in bytecode
+        if (value instanceof Type type && type.getSort() == Type.OBJECT) {
+            String className = type.getClassName();
+            classConstantRefs.add(className);
+        }
+
+        if (mv != null) {
+            mv.visitLdcInsn(value);
+        }
+    }
+
+    @Override
     public void visitInvokeDynamicInsn(String name, String descriptor,
             org.objectweb.asm.Handle bootstrapMethodHandle, Object... bootstrapMethodArguments) {
         // Handle lambda and method reference invocations
@@ -69,5 +88,16 @@ public class MethodVisitorAdapter extends MethodVisitor {
      */
     public Set<FieldRef> getFieldAccesses() {
         return Set.copyOf(fieldAccesses);
+    }
+
+    /**
+     * Returns all class constants referenced in this method via LDC instructions.
+     * These are class literals like {@code SomeClass.class} in source code.
+     * <p>
+     * Useful for extracting DI binding information where classes are passed as arguments,
+     * e.g., {@code bind(Interface.class).to(Implementation.class)}.
+     */
+    public Set<String> getClassConstantRefs() {
+        return Set.copyOf(classConstantRefs);
     }
 }

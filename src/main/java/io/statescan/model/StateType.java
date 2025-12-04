@@ -17,6 +17,12 @@ public enum StateType {
     EXTERNAL("External State"),
 
     /**
+     * State accessed via external service connections.
+     * Examples: database connections, HTTP clients, gRPC channels.
+     */
+    EXTERNAL_SERVICE("External Service"),
+
+    /**
      * State related to service client connections.
      * Examples: HTTP client pools, gRPC channels.
      */
@@ -32,7 +38,24 @@ public enum StateType {
      * Session or request-scoped state.
      * Examples: session-scoped beans, ThreadLocal.
      */
-    SESSION("Session State");
+    SESSION("Session State"),
+
+    /**
+     * State stored in files on the local filesystem.
+     * Examples: file streams, file channels, RandomAccessFile.
+     */
+    FILE_BASED("File-Based State"),
+
+    /**
+     * State stored in ThreadLocal variables.
+     * Examples: ThreadLocal fields, InheritableThreadLocal.
+     */
+    THREAD_LOCAL("ThreadLocal State"),
+
+    /**
+     * State type is unknown or not categorized.
+     */
+    UNKNOWN("Unknown");
 
     private final String displayName;
 

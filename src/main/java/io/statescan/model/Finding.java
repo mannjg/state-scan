@@ -22,6 +22,8 @@ import java.util.Optional;
  * @param sourceFile        Source file name (if available)
  * @param details           Additional details about the finding
  * @param affectedEndpoints REST endpoints that access this stateful component
+ * @param reachabilityPath  Path from project root to the stateful component (for path-based detection)
+ * @param rootClass         The project class that starts the reachability path (if applicable)
  */
 public record Finding(
         String className,
@@ -39,7 +41,9 @@ public record Finding(
         String detectorId,
         String sourceFile,
         String details,
-        List<String> affectedEndpoints
+        List<String> affectedEndpoints,
+        List<String> reachabilityPath,
+        String rootClass
 ) {
     /**
      * How the scope of a class was determined.
@@ -106,6 +110,9 @@ public record Finding(
         if (affectedEndpoints == null) {
             affectedEndpoints = List.of();
         }
+        if (reachabilityPath == null) {
+            reachabilityPath = List.of();
+        }
     }
 
     /**
@@ -132,6 +139,8 @@ public record Finding(
         private String sourceFile;
         private String details;
         private List<String> affectedEndpoints = List.of();
+        private List<String> reachabilityPath = List.of();
+        private String rootClass;
 
         public Builder className(String className) {
             this.className = className;
@@ -213,6 +222,16 @@ public record Finding(
             return this;
         }
 
+        public Builder reachabilityPath(List<String> path) {
+            this.reachabilityPath = path != null ? List.copyOf(path) : List.of();
+            return this;
+        }
+
+        public Builder rootClass(String rootClass) {
+            this.rootClass = rootClass;
+            return this;
+        }
+
         public Finding build() {
             return new Finding(
                     className,
@@ -230,7 +249,9 @@ public record Finding(
                     detectorId,
                     sourceFile,
                     details,
-                    affectedEndpoints
+                    affectedEndpoints,
+                    reachabilityPath,
+                    rootClass
             );
         }
     }
@@ -264,5 +285,22 @@ public record Finding(
             return Optional.of(fieldType + " " + fieldName);
         }
         return Optional.of(fieldName);
+    }
+
+    /**
+     * Returns true if this finding has a reachability path.
+     */
+    public boolean hasReachabilityPath() {
+        return reachabilityPath != null && !reachabilityPath.isEmpty();
+    }
+
+    /**
+     * Returns the reachability path as a human-readable string.
+     */
+    public String reachabilityPathString() {
+        if (!hasReachabilityPath()) {
+            return "";
+        }
+        return String.join(" -> ", reachabilityPath);
     }
 }

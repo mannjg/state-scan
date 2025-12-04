@@ -10,6 +10,7 @@ import io.statescan.model.StateType;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Detects usage of in-memory caches that aren't shared across replicas.
@@ -30,11 +31,12 @@ public class CacheDetector implements Detector {
     }
 
     @Override
-    public List<Finding> detect(CallGraph graph, LeafTypeConfig config) {
+    public List<Finding> detect(CallGraph graph, LeafTypeConfig config, Set<String> reachableClasses) {
         List<Finding> findings = new ArrayList<>();
 
         for (ClassNode cls : graph.allClasses()) {
-            if (!cls.isProjectClass()) {
+            // Only analyze classes reachable from project roots
+            if (!reachableClasses.contains(cls.fqn())) {
                 continue;
             }
 

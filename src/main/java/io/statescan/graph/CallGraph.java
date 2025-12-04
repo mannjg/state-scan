@@ -16,16 +16,21 @@ public class CallGraph {
     private final Map<String, Set<String>> supertypes;    // child -> all ancestors (transitive)
     private final Map<MethodRef, Set<MethodRef>> calledBy; // method -> methods that call it
 
+    // DI binding edges: interface/abstract -> concrete implementations
+    private final Map<String, Set<String>> diBindings;
+
     private CallGraph(
             Map<String, ClassNode> classes,
             Map<String, Set<String>> subtypes,
             Map<String, Set<String>> supertypes,
-            Map<MethodRef, Set<MethodRef>> calledBy
+            Map<MethodRef, Set<MethodRef>> calledBy,
+            Map<String, Set<String>> diBindings
     ) {
         this.classes = Map.copyOf(classes);
         this.subtypes = deepCopySetMap(subtypes);
         this.supertypes = deepCopySetMap(supertypes);
         this.calledBy = deepCopySetMap(calledBy);
+        this.diBindings = deepCopySetMap(diBindings);
     }
 
     private static <K, V> Map<K, Set<V>> deepCopySetMap(Map<K, Set<V>> original) {
@@ -112,6 +117,28 @@ public class CallGraph {
     }
 
     /**
+     * Returns implementations bound to the given interface via DI.
+     * This includes both Guice bindings and CDI bean discovery.
+     */
+    public Set<String> getImplementations(String interfaceFqn) {
+        return diBindings.getOrDefault(interfaceFqn, Set.of());
+    }
+
+    /**
+     * Checks if the given type has DI bindings.
+     */
+    public boolean hasDIBinding(String type) {
+        return diBindings.containsKey(type);
+    }
+
+    /**
+     * Returns all DI bindings.
+     */
+    public Map<String, Set<String>> allDIBindings() {
+        return Collections.unmodifiableMap(diBindings);
+    }
+
+    /**
      * Returns all classes that extend the given class (recursively).
      */
     public Set<ClassNode> classesExtending(String superclassFqn) {
@@ -178,6 +205,17 @@ public class CallGraph {
     }
 
     /**
+     * Creates a new CallGraph with additional DI bindings merged in.
+     * This is used after bytecode scanning to add Guice/CDI binding information.
+     */
+    public CallGraph withDIBindings(Map<String, Set<String>> additionalBindings) {
+        Map<String, Set<String>> mergedBindings = new HashMap<>(diBindings);
+        additionalBindings.forEach((iface, impls) ->
+                mergedBindings.computeIfAbsent(iface, k -> new HashSet<>()).addAll(impls));
+        return new CallGraph(classes, subtypes, supertypes, calledBy, mergedBindings);
+    }
+
+    /**
      * Creates a filtered view of this graph containing only reachable classes.
      */
     public CallGraph filterTo(Set<String> reachableClasses) {
@@ -207,7 +245,16 @@ public class CallGraph {
                                 .collect(Collectors.toSet())
                 ));
 
-        return new CallGraph(filteredClasses, filteredSubtypes, filteredSupertypes, filteredCalledBy);
+        Map<String, Set<String>> filteredDIBindings = diBindings.entrySet().stream()
+                .filter(e -> reachableClasses.contains(e.getKey()))
+                .collect(Collectors.toMap(
+                        Map.Entry::getKey,
+                        e -> e.getValue().stream()
+                                .filter(reachableClasses::contains)
+                                .collect(Collectors.toSet())
+                ));
+
+        return new CallGraph(filteredClasses, filteredSubtypes, filteredSupertypes, filteredCalledBy, filteredDIBindings);
     }
 
     /**
@@ -222,6 +269,7 @@ public class CallGraph {
         private final Map<String, Set<String>> subtypes = new HashMap<>();
         private final Map<String, Set<String>> supertypes = new HashMap<>();
         private final Map<MethodRef, Set<MethodRef>> calledBy = new HashMap<>();
+        private final Map<String, Set<String>> diBindings = new HashMap<>();
 
         public Builder addClass(ClassNode classNode) {
             classes.put(classNode.fqn(), classNode);
@@ -240,6 +288,23 @@ public class CallGraph {
 
         public Builder addCaller(MethodRef callee, MethodRef caller) {
             calledBy.computeIfAbsent(callee, k -> new HashSet<>()).add(caller);
+            return this;
+        }
+
+        /**
+         * Adds a single DI binding from interface to implementation.
+         */
+        public Builder addDIBinding(String interfaceFqn, String implementationFqn) {
+            diBindings.computeIfAbsent(interfaceFqn, k -> new HashSet<>()).add(implementationFqn);
+            return this;
+        }
+
+        /**
+         * Adds multiple DI bindings at once.
+         */
+        public Builder addDIBindings(Map<String, Set<String>> bindings) {
+            bindings.forEach((iface, impls) ->
+                    diBindings.computeIfAbsent(iface, k -> new HashSet<>()).addAll(impls));
             return this;
         }
 
@@ -298,7 +363,7 @@ public class CallGraph {
         }
 
         public CallGraph build() {
-            return new CallGraph(classes, subtypes, supertypes, calledBy);
+            return new CallGraph(classes, subtypes, supertypes, calledBy, diBindings);
         }
     }
 }

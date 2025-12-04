@@ -9,6 +9,7 @@ import io.statescan.model.RiskLevel;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -23,6 +24,17 @@ class SingletonDetectorTest {
     void setUp() {
         detector = new SingletonDetector();
         config = LeafTypeConfig.loadDefault();
+    }
+
+    /**
+     * Helper to create reachable classes set for given class nodes.
+     */
+    private Set<String> reachableFrom(ClassNode... classes) {
+        Set<String> reachable = new HashSet<>();
+        for (ClassNode c : classes) {
+            reachable.add(c.fqn());
+        }
+        return reachable;
     }
 
     @Test
@@ -50,7 +62,7 @@ class SingletonDetectorTest {
                 .addClass(classNode)
                 .build();
 
-        List<Finding> findings = detector.detect(graph, config);
+        List<Finding> findings = detector.detect(graph, config, reachableFrom(classNode));
 
         assertThat(findings).hasSize(1);
         assertThat(findings.get(0).className()).isEqualTo("com.example.MySingleton");
@@ -77,7 +89,7 @@ class SingletonDetectorTest {
                 .addClass(classNode)
                 .build();
 
-        List<Finding> findings = detector.detect(graph, config);
+        List<Finding> findings = detector.detect(graph, config, reachableFrom(classNode));
 
         assertThat(findings).hasSize(1);
         assertThat(findings.get(0).fieldName()).isEqualTo("items");
@@ -110,7 +122,7 @@ class SingletonDetectorTest {
                 .addClass(classNode)
                 .build();
 
-        List<Finding> findings = detector.detect(graph, config);
+        List<Finding> findings = detector.detect(graph, config, reachableFrom(classNode));
 
         assertThat(findings).isEmpty();
     }
@@ -134,7 +146,7 @@ class SingletonDetectorTest {
                 .addClass(classNode)
                 .build();
 
-        List<Finding> findings = detector.detect(graph, config);
+        List<Finding> findings = detector.detect(graph, config, reachableFrom(classNode));
 
         // SingletonDetector only checks classes with singleton annotations
         assertThat(findings).isEmpty();
@@ -167,7 +179,7 @@ class SingletonDetectorTest {
                 .addClass(classNode)
                 .build();
 
-        List<Finding> findings = detector.detect(graph, config);
+        List<Finding> findings = detector.detect(graph, config, reachableFrom(classNode));
 
         assertThat(findings).hasSize(2);
     }
@@ -193,7 +205,7 @@ class SingletonDetectorTest {
                 .addClass(classNode)
                 .build();
 
-        List<Finding> findings = detector.detect(graph, config);
+        List<Finding> findings = detector.detect(graph, config, reachableFrom(classNode));
 
         // Static fields are handled by StaticStateDetector, not SingletonDetector
         assertThat(findings).isEmpty();
@@ -219,7 +231,7 @@ class SingletonDetectorTest {
                 .addClass(classNode)
                 .build();
 
-        List<Finding> findings = detector.detect(graph, config);
+        List<Finding> findings = detector.detect(graph, config, reachableFrom(classNode));
 
         assertThat(findings).isEmpty();
     }
