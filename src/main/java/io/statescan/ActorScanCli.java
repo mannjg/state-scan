@@ -33,6 +33,10 @@ public class ActorScanCli implements Callable<Integer> {
             description = "Package prefixes to include (comma-separated, e.g., 'com.example,org.myapp')")
     private String packagePrefixes;
 
+    @Option(names = {"-x", "--exclude-packages"},
+            description = "Package prefixes to exclude (comma-separated, takes precedence over includes)")
+    private String excludePackages;
+
     @Option(names = {"--show-empty"},
             description = "Show methods with no actors")
     private boolean showEmpty = false;
@@ -66,6 +70,15 @@ public class ActorScanCli implements Callable<Integer> {
                 .collect(Collectors.toSet());
         }
 
+        // Parse exclude packages
+        Set<String> excludePkgs = Set.of();
+        if (excludePackages != null && !excludePackages.isBlank()) {
+            excludePkgs = Arrays.stream(excludePackages.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .collect(Collectors.toSet());
+        }
+
         // Parse root packages for dependency scanning
         Set<String> rootPkgs = Set.of();
         if (rootPackages != null && !rootPackages.isBlank()) {
@@ -82,7 +95,7 @@ public class ActorScanCli implements Callable<Integer> {
         }
 
         // Create scanner
-        ProjectScanner scanner = new ProjectScanner(packages, rootPkgs);
+        ProjectScanner scanner = new ProjectScanner(packages, excludePkgs, rootPkgs);
 
         // Scan
         ScanResult result;

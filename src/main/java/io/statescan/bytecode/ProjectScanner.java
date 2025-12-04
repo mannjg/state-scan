@@ -24,6 +24,7 @@ import java.util.jar.JarFile;
 public class ProjectScanner {
 
     private final Set<String> packagePrefixes;
+    private final Set<String> excludePackages;
     private final Set<String> rootPackages;
     private int classesScanned = 0;
 
@@ -31,10 +32,12 @@ public class ProjectScanner {
      * Creates a ProjectScanner that filters classes by package prefix.
      *
      * @param packagePrefixes Set of package prefixes to include for project classes (empty means all)
+     * @param excludePackages Set of package prefixes to exclude (takes precedence over includes)
      * @param rootPackages Set of package prefixes to scan from transitive dependencies
      */
-    public ProjectScanner(Set<String> packagePrefixes, Set<String> rootPackages) {
+    public ProjectScanner(Set<String> packagePrefixes, Set<String> excludePackages, Set<String> rootPackages) {
         this.packagePrefixes = packagePrefixes != null ? packagePrefixes : Set.of();
+        this.excludePackages = excludePackages != null ? excludePackages : Set.of();
         this.rootPackages = rootPackages != null ? rootPackages : Set.of();
     }
 
@@ -44,14 +47,14 @@ public class ProjectScanner {
      * @param packagePrefixes Set of package prefixes to include (empty means all)
      */
     public ProjectScanner(Set<String> packagePrefixes) {
-        this(packagePrefixes, Set.of());
+        this(packagePrefixes, Set.of(), Set.of());
     }
 
     /**
      * Creates a ProjectScanner that includes all classes.
      */
     public ProjectScanner() {
-        this(Set.of(), Set.of());
+        this(Set.of(), Set.of(), Set.of());
     }
 
     /**
@@ -259,6 +262,10 @@ public class ProjectScanner {
     }
 
     private boolean isProjectClass(String fqn) {
+        // Exclusions take precedence
+        if (isExcluded(fqn)) {
+            return false;
+        }
         if (packagePrefixes.isEmpty()) {
             return true;
         }
@@ -266,7 +273,15 @@ public class ProjectScanner {
     }
 
     private boolean isRootPackageClass(String fqn) {
+        // Exclusions take precedence
+        if (isExcluded(fqn)) {
+            return false;
+        }
         return rootPackages.stream().anyMatch(fqn::startsWith);
+    }
+
+    private boolean isExcluded(String fqn) {
+        return excludePackages.stream().anyMatch(fqn::startsWith);
     }
 
     /**
