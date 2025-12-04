@@ -8,6 +8,7 @@ import java.util.Map;
  * @param caller          The calling method
  * @param callee          The called method
  * @param invokeType      Type of invocation
+ * @param receiver        The actor receiving the call (null for static calls)
  * @param parameterFlow   Maps callee parameter index to the argument reference from caller
  * @param invocationIndex Index distinguishing multiple calls to same target in one method
  */
@@ -15,6 +16,7 @@ public record CallEdge(
     MethodRef caller,
     MethodRef callee,
     InvokeType invokeType,
+    ArgumentRef receiver,
     Map<Integer, ArgumentRef> parameterFlow,
     int invocationIndex
 ) {

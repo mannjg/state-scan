@@ -79,43 +79,69 @@ public class CallGraphOutput {
     }
 
     /**
-     * Print callgraph edges grouped by caller.
+     * Print call tree starting from root classes/methods.
      */
-    public void printEdges() {
-        out.println("=== CALLGRAPH EDGES ===");
+    public void printCallTree() {
+        out.println("=== CALL GRAPH ===");
 
-        // Group by class for better organization
-        Map<String, List<CallEdge>> edgesByClass = callGraph.allEdges()
-            .collect(Collectors.groupingBy(
-                e -> e.caller().classFqn(),
-                TreeMap::new,
-                Collectors.toList()
-            ));
+        // Group root methods by class, only those with outgoing calls
+        Map<String, List<MethodRef>> rootsByClass = callGraph.rootMethods().stream()
+            .filter(this::hasOutgoingCalls)
+            .sorted(Comparator.comparing(MethodRef::key))
+            .collect(Collectors.groupingBy(MethodRef::classFqn, TreeMap::new, Collectors.toList()));
 
-        for (Map.Entry<String, List<CallEdge>> classEntry : edgesByClass.entrySet()) {
-            String classFqn = classEntry.getKey();
-            out.println(color(CYAN, classFqn) + ":");
-
-            // Group by method within class
-            Map<String, List<CallEdge>> edgesByMethod = classEntry.getValue().stream()
-                .collect(Collectors.groupingBy(
-                    e -> e.caller().methodName() + e.caller().descriptor(),
-                    LinkedHashMap::new,
-                    Collectors.toList()
-                ));
-
-            for (Map.Entry<String, List<CallEdge>> methodEntry : edgesByMethod.entrySet()) {
-                String methodKey = methodEntry.getKey();
-                List<CallEdge> edges = methodEntry.getValue();
-
-                out.println("  " + formatMethodName(methodKey) + ":");
-
-                for (CallEdge edge : edges) {
-                    out.println("    " + formatCallEdge(edge));
-                }
+        for (Map.Entry<String, List<MethodRef>> entry : rootsByClass.entrySet()) {
+            out.println(color(CYAN, entry.getKey()) + ":");
+            for (MethodRef rootMethod : entry.getValue()) {
+                out.println("  " + color(GREEN, rootMethod.methodName()) + ":");
+                printCallTreeRecursive(rootMethod, 4, new HashSet<>());
             }
         }
         out.println();
+    }
+
+    private void printCallTreeRecursive(MethodRef method, int indent, Set<String> visited) {
+        if (!visited.add(method.key())) {
+            return;  // Already being visited in this path
+        }
+
+        Set<CallEdge> callees = callGraph.getCallees(method);
+        List<CallEdge> sortedCallees = callees.stream()
+            .sorted(Comparator.comparing(e -> e.callee().key()))
+            .collect(Collectors.toList());
+
+        for (CallEdge edge : sortedCallees) {
+            String actorType = formatReceiverType(edge.receiver());
+            String calleeName = edge.callee().classFqn() + "." + edge.callee().methodName();
+
+            boolean isCycle = visited.contains(edge.callee().key());
+            if (isCycle) {
+                out.println(spaces(indent) + color(YELLOW, actorType) + " " + calleeName + color(DIM, " (cycle)"));
+            } else {
+                out.println(spaces(indent) + color(YELLOW, actorType) + " " + calleeName + ":");
+                printCallTreeRecursive(edge.callee(), indent + 2, visited);
+            }
+        }
+
+        visited.remove(method.key());  // Backtrack for other paths
+    }
+
+    private boolean hasOutgoingCalls(MethodRef method) {
+        Set<CallEdge> callees = callGraph.getCallees(method);
+        return callees != null && !callees.isEmpty();
+    }
+
+    private String formatReceiverType(ArgumentRef receiver) {
+        if (receiver == null) return "STATIC";
+        if (receiver instanceof ArgumentRef.ActorArg a) return a.actorType().toString();
+        if (receiver instanceof ArgumentRef.ThisArg) return "THIS";
+        if (receiver instanceof ArgumentRef.ComputedArg) return "COMPUTED";
+        if (receiver instanceof ArgumentRef.LiteralArg) return "LITERAL";
+        return "?";
+    }
+
+    private String spaces(int count) {
+        return " ".repeat(count);
     }
 
     /**
@@ -179,9 +205,7 @@ public class CallGraphOutput {
      */
     public void printFull() {
         printSummary();
-        printRootMethods();
-        printLeafMethods();
-        printEdges();
+        printCallTree();
         printTypeNarrowings();
     }
 

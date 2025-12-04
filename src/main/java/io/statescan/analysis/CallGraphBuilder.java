@@ -69,7 +69,7 @@ public class CallGraphBuilder {
                         String pairKey = caller.key() + "->" + target.key();
                         int idx = invocationCounts.merge(pairKey, 1, (old, v) -> old + 1) - 1;
 
-                        CallEdge edge = new CallEdge(caller, target, inv.invokeType(), paramFlow, idx);
+                        CallEdge edge = new CallEdge(caller, target, inv.invokeType(), inv.receiver(), paramFlow, idx);
 
                         outgoing.computeIfAbsent(caller.key(), k -> new LinkedHashSet<>()).add(edge);
                         incoming.computeIfAbsent(target.key(), k -> new LinkedHashSet<>()).add(edge);
