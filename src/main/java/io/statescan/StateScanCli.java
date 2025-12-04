@@ -125,6 +125,12 @@ public class StateScanCli implements Callable<Integer> {
     )
     private boolean noColor;
 
+    @Option(
+            names = {"-d", "--detailed"},
+            description = "Show detailed findings list instead of aggregated view"
+    )
+    private boolean detailed;
+
     public enum OutputFormat {
         console,
         json,
@@ -344,7 +350,7 @@ public class StateScanCli implements Callable<Integer> {
 
     private Reporter createReporter() {
         return switch (outputFormat) {
-            case console -> new ConsoleReporter(!noColor);
+            case console -> new ConsoleReporter(!noColor, detailed);
             case json -> new JsonReporter(true);
             case html -> new HtmlReporter();
         };

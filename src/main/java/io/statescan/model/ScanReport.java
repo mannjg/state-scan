@@ -78,6 +78,52 @@ public record ScanReport(
     }
 
     /**
+     * Returns findings grouped by class name (for deduplication/aggregation).
+     */
+    public Map<String, List<Finding>> findingsByClass() {
+        return findings.stream()
+                .collect(Collectors.groupingBy(Finding::className));
+    }
+
+    /**
+     * Returns findings grouped by pattern (for pattern breakdown).
+     */
+    public Map<String, List<Finding>> findingsByPattern() {
+        return findings.stream()
+                .collect(Collectors.groupingBy(Finding::pattern));
+    }
+
+    /**
+     * Returns findings that have reachability paths (Mode 2 / Port Analysis).
+     * These are findings discovered by PathFinder that trace from project code to external types.
+     */
+    public List<Finding> pathFindings() {
+        return findings.stream()
+                .filter(Finding::hasReachabilityPath)
+                .toList();
+    }
+
+    /**
+     * Returns findings without reachability paths (Mode 1 / Held State).
+     * These are findings discovered by detectors like StaticStateDetector, SingletonDetector, etc.
+     */
+    public List<Finding> heldStateFindings() {
+        return findings.stream()
+                .filter(f -> !f.hasReachabilityPath())
+                .toList();
+    }
+
+    /**
+     * Returns the number of unique classes with findings.
+     */
+    public int uniqueClassCount() {
+        return (int) findings.stream()
+                .map(Finding::className)
+                .distinct()
+                .count();
+    }
+
+    /**
      * Returns count of findings by risk level.
      */
     public Map<RiskLevel, Long> findingCountsByRiskLevel() {

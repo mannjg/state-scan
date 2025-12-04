@@ -3,15 +3,26 @@ package io.statescan.report;
 import io.statescan.model.Finding;
 import io.statescan.model.RiskLevel;
 import io.statescan.model.ScanReport;
+import io.statescan.util.TypeUtils;
 
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.Writer;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Formats scan results for console output with ANSI colors.
+ * <p>
+ * Provides an aggregated view by default:
+ * - Summary header with compact stats
+ * - Pattern breakdown showing counts
+ * - External Ports tree (paths to external dependencies)
+ * - Held State by class (grouped findings)
+ * <p>
+ * Use --detailed flag for the original flat listing.
  */
 public class ConsoleReporter implements Reporter {
 
@@ -22,16 +33,26 @@ public class ConsoleReporter implements Reporter {
     private static final String YELLOW = "\u001B[33m";
     private static final String GREEN = "\u001B[32m";
     private static final String CYAN = "\u001B[36m";
-    private static final String WHITE = "\u001B[37m";
+
+    // Unicode tree-drawing characters
+    private static final String TREE_BRANCH = "\u251C\u2500\u2500 ";  // ├──
+    private static final String TREE_LAST = "\u2514\u2500\u2500 ";    // └──
+    private static final String TREE_PIPE = "\u2502   ";              // │
 
     private final boolean useColors;
+    private final boolean detailed;
 
     public ConsoleReporter() {
-        this(true);
+        this(true, false);
     }
 
     public ConsoleReporter(boolean useColors) {
+        this(useColors, false);
+    }
+
+    public ConsoleReporter(boolean useColors, boolean detailed) {
         this.useColors = useColors;
+        this.detailed = detailed;
     }
 
     @Override
@@ -44,32 +65,27 @@ public class ConsoleReporter implements Reporter {
         PrintWriter out = new PrintWriter(writer);
 
         printHeader(out, report);
-        printSummary(out, report);
+        printCompactSummary(out, report);
+        printPatternBreakdown(out, report);
 
-        // Print findings grouped by risk level
-        Map<RiskLevel, List<Finding>> byRisk = report.findingsByRiskLevel();
-
-        if (byRisk.containsKey(RiskLevel.CRITICAL) && !byRisk.get(RiskLevel.CRITICAL).isEmpty()) {
-            printFindingGroup(out, "CRITICAL FINDINGS", RiskLevel.CRITICAL, byRisk.get(RiskLevel.CRITICAL));
+        // External Ports section (Mode 2 findings with paths)
+        List<Finding> pathFindings = report.pathFindings();
+        if (!pathFindings.isEmpty()) {
+            printExternalPorts(out, pathFindings);
         }
 
-        if (byRisk.containsKey(RiskLevel.HIGH) && !byRisk.get(RiskLevel.HIGH).isEmpty()) {
-            printFindingGroup(out, "HIGH RISK FINDINGS", RiskLevel.HIGH, byRisk.get(RiskLevel.HIGH));
+        // Held State section (Mode 1 findings)
+        List<Finding> heldState = report.heldStateFindings();
+        if (!heldState.isEmpty()) {
+            printHeldStateByClass(out, heldState);
         }
 
-        if (byRisk.containsKey(RiskLevel.MEDIUM) && !byRisk.get(RiskLevel.MEDIUM).isEmpty()) {
-            printFindingGroup(out, "MEDIUM RISK FINDINGS", RiskLevel.MEDIUM, byRisk.get(RiskLevel.MEDIUM));
+        // Optional detailed listing (for --detailed flag)
+        if (detailed) {
+            printDetailedFindings(out, report);
         }
 
-        if (byRisk.containsKey(RiskLevel.LOW) && !byRisk.get(RiskLevel.LOW).isEmpty()) {
-            printFindingGroup(out, "LOW RISK FINDINGS", RiskLevel.LOW, byRisk.get(RiskLevel.LOW));
-        }
-
-        if (byRisk.containsKey(RiskLevel.INFO) && !byRisk.get(RiskLevel.INFO).isEmpty()) {
-            printFindingGroup(out, "INFORMATIONAL", RiskLevel.INFO, byRisk.get(RiskLevel.INFO));
-        }
-
-        printRecommendations(out, report);
+        printFooter(out, report);
         out.flush();
     }
 
@@ -82,51 +98,172 @@ public class ConsoleReporter implements Reporter {
 
         out.println("Project: " + report.projectPath().toString());
         out.println("Scan Date: " + report.scanDate());
-        out.println("Classes Scanned: " + report.classesScanned());
-        if (report.jarsScanned() > 0) {
-            out.println("JARs Scanned: " + report.jarsScanned());
-        }
         out.println();
     }
 
-    private void printSummary(PrintWriter out, ScanReport report) {
-        Map<RiskLevel, List<Finding>> byRisk = report.findingsByRiskLevel();
-
-        int critical = byRisk.getOrDefault(RiskLevel.CRITICAL, List.of()).size();
-        int high = byRisk.getOrDefault(RiskLevel.HIGH, List.of()).size();
-        int medium = byRisk.getOrDefault(RiskLevel.MEDIUM, List.of()).size();
-        int low = byRisk.getOrDefault(RiskLevel.LOW, List.of()).size();
-        int info = byRisk.getOrDefault(RiskLevel.INFO, List.of()).size();
-
+    private void printCompactSummary(PrintWriter out, ScanReport report) {
         out.println(bold("SUMMARY"));
         out.println(line('-', 70));
 
+        // Compact one-line stats
+        String stats = String.format("Scanned: %,d classes | %d JARs | %.1fs",
+                report.classesScanned(),
+                report.jarsScanned(),
+                report.scanDurationMs() / 1000.0);
+        out.println(stats);
+
+        // Findings by severity on one line
+        long critical = report.criticalCount();
+        long high = report.highCount();
+        long medium = report.mediumCount();
+        long low = report.lowCount();
+
+        StringBuilder findings = new StringBuilder("Findings: ");
         if (critical > 0) {
-            out.println(color(RED, "  CRITICAL: " + critical));
+            findings.append(color(RED, critical + " critical")).append(" | ");
         } else {
-            out.println("  Critical: 0");
+            findings.append("0 critical | ");
         }
-
         if (high > 0) {
-            out.println(color(YELLOW, "  HIGH: " + high));
+            findings.append(color(YELLOW, high + " high")).append(" | ");
         } else {
-            out.println("  High: 0");
+            findings.append("0 high | ");
         }
+        findings.append(medium).append(" medium | ").append(low).append(" low");
 
-        out.println("  Medium: " + medium);
-        out.println("  Low: " + low);
-        out.println("  Info: " + info);
+        out.println(findings.toString());
+
+        // Class count
+        int uniqueClasses = report.uniqueClassCount();
+        out.println("Affected: " + uniqueClasses + " classes");
         out.println();
     }
 
+    private void printPatternBreakdown(PrintWriter out, ScanReport report) {
+        Map<String, List<Finding>> byPattern = report.findingsByPattern();
+
+        if (byPattern.isEmpty()) {
+            return;
+        }
+
+        out.println(bold("PATTERN BREAKDOWN"));
+        out.println(line('-', 40));
+
+        // Sort by count descending and show top 10
+        byPattern.entrySet().stream()
+                .sorted((a, b) -> Integer.compare(b.getValue().size(), a.getValue().size()))
+                .limit(10)
+                .forEach(entry -> {
+                    String pattern = entry.getKey();
+                    List<Finding> findings = entry.getValue();
+                    int fieldCount = findings.size();
+                    int classCount = (int) findings.stream()
+                            .map(Finding::className)
+                            .distinct()
+                            .count();
+                    out.printf("  %s: %d fields (%d classes)%n", pattern, fieldCount, classCount);
+                });
+
+        int remaining = byPattern.size() - 10;
+        if (remaining > 0) {
+            out.println("  ... and " + remaining + " more patterns");
+        }
+
+        out.println();
+    }
+
+    private void printExternalPorts(PrintWriter out, List<Finding> pathFindings) {
+        List<PortTree.CategoryNode> tree = PortTree.buildTree(pathFindings);
+
+        if (tree.isEmpty()) {
+            return;
+        }
+
+        int totalPaths = pathFindings.size();
+        out.println(bold("EXTERNAL PORTS") + color(CYAN, " (" + totalPaths + " paths)"));
+        out.println(line('=', 70));
+
+        for (int i = 0; i < tree.size(); i++) {
+            PortTree.CategoryNode category = tree.get(i);
+
+            out.println(bold(category.displayName()) +
+                    color(CYAN, " (" + category.totalPaths() + " paths)"));
+
+            List<PortTree.LeafTypeNode> leafTypes = category.leafTypes();
+            for (int j = 0; j < leafTypes.size(); j++) {
+                PortTree.LeafTypeNode leaf = leafTypes.get(j);
+                boolean isLastLeaf = (j == leafTypes.size() - 1);
+                String leafPrefix = isLastLeaf ? TREE_LAST : TREE_BRANCH;
+
+                out.println(leafPrefix + leaf.simpleLeafType());
+
+                // Show up to 3 example paths per leaf type
+                List<PortTree.PathEntry> paths = leaf.paths();
+                int pathLimit = Math.min(3, paths.size());
+                for (int k = 0; k < pathLimit; k++) {
+                    PortTree.PathEntry path = paths.get(k);
+                    String pathPrefix = isLastLeaf ? "    " : TREE_PIPE;
+                    String entryPrefix = (k == pathLimit - 1 && paths.size() <= 3) ? TREE_LAST : TREE_BRANCH;
+                    out.println(pathPrefix + entryPrefix + path.pathString());
+                }
+
+                if (paths.size() > 3) {
+                    String morePrefix = isLastLeaf ? "    " : TREE_PIPE;
+                    out.println(morePrefix + TREE_LAST + "... and " + (paths.size() - 3) + " more paths");
+                }
+            }
+            out.println();
+        }
+    }
+
+    private void printHeldStateByClass(PrintWriter out, List<Finding> heldState) {
+        List<ClassAggregation.ClassEntry> classes = ClassAggregation.aggregate(heldState);
+
+        if (classes.isEmpty()) {
+            return;
+        }
+
+        int totalClasses = classes.size();
+        out.println(bold("HELD STATE BY CLASS") + color(CYAN, " (" + totalClasses + " classes)"));
+        out.println(line('=', 70));
+
+        for (ClassAggregation.ClassEntry classEntry : classes) {
+            // Class header with finding count
+            String riskIndicator = getRiskIndicator(classEntry.highestRisk());
+            out.println(riskIndicator + " " + bold(classEntry.className()) +
+                    color(CYAN, " [" + classEntry.findingCount() + " findings]"));
+
+            // List fields
+            for (ClassAggregation.FieldEntry field : classEntry.fields()) {
+                String fieldType = field.fieldType() != null ? "(" + field.fieldType() + ")" : "";
+                out.printf("  - %s %s - %s%n",
+                        field.fieldName(),
+                        fieldType,
+                        field.pattern());
+            }
+            out.println();
+        }
+    }
+
+    private void printDetailedFindings(PrintWriter out, ScanReport report) {
+        out.println();
+        out.println(bold("DETAILED FINDINGS"));
+        out.println(line('=', 70));
+
+        // Use existing grouped-by-risk logic for detailed mode
+        Map<RiskLevel, List<Finding>> byRisk = report.findingsByRiskLevel();
+
+        for (RiskLevel level : List.of(RiskLevel.CRITICAL, RiskLevel.HIGH,
+                RiskLevel.MEDIUM, RiskLevel.LOW, RiskLevel.INFO)) {
+            List<Finding> findings = byRisk.getOrDefault(level, List.of());
+            if (!findings.isEmpty()) {
+                printFindingGroup(out, level.name() + " FINDINGS", level, findings);
+            }
+        }
+    }
+
     private void printFindingGroup(PrintWriter out, String title, RiskLevel level, List<Finding> findings) {
-        String icon = switch (level) {
-            case CRITICAL -> color(RED, "[CRITICAL]");
-            case HIGH -> color(YELLOW, "[HIGH]");
-            case MEDIUM -> "[MEDIUM]";
-            case LOW -> "[LOW]";
-            case INFO -> color(CYAN, "[INFO]");
-        };
+        String icon = getRiskIndicator(level);
 
         out.println(bold(icon + " " + title + " (" + findings.size() + ")"));
         out.println(line('-', 70));
@@ -143,7 +280,11 @@ public class ConsoleReporter implements Reporter {
         out.println("    Location: " + finding.location());
 
         if (finding.fieldName() != null) {
-            out.println("    Field: " + finding.fieldSignature().orElse(finding.fieldName()));
+            String cleanType = TypeUtils.cleanTypeName(finding.fieldType());
+            String fieldSig = cleanType != null ?
+                    cleanType + " " + finding.fieldName() :
+                    finding.fieldName();
+            out.println("    Field: " + fieldSig);
         }
 
         out.println("    Pattern: " + finding.pattern());
@@ -152,6 +293,15 @@ public class ConsoleReporter implements Reporter {
             out.println("    Description: " + finding.description());
         }
 
+        // Show reachability path if present
+        if (finding.hasReachabilityPath()) {
+            String cleanPath = finding.reachabilityPath().stream()
+                    .map(TypeUtils::simpleClassName)
+                    .collect(Collectors.joining(" -> "));
+            out.println("    Path: " + cleanPath);
+        }
+
+        // Show recommendations only in detailed mode
         if (finding.recommendation() != null) {
             out.println("    " + color(GREEN, "Recommendation: " + finding.recommendation()));
         }
@@ -169,12 +319,11 @@ public class ConsoleReporter implements Reporter {
         out.println();
     }
 
-    private void printRecommendations(PrintWriter out, ScanReport report) {
-        Map<RiskLevel, List<Finding>> byRisk = report.findingsByRiskLevel();
-        int critical = byRisk.getOrDefault(RiskLevel.CRITICAL, List.of()).size();
-        int high = byRisk.getOrDefault(RiskLevel.HIGH, List.of()).size();
-
+    private void printFooter(PrintWriter out, ScanReport report) {
         out.println(line('=', 70));
+
+        long critical = report.criticalCount();
+        long high = report.highCount();
 
         if (critical > 0) {
             out.println(color(RED, bold("ACTION REQUIRED: " + critical +
@@ -186,7 +335,22 @@ public class ConsoleReporter implements Reporter {
             out.println(color(GREEN, "No critical issues found. Review medium/low findings as needed."));
         }
 
+        if (!detailed && report.totalFindings() > 0) {
+            out.println();
+            out.println("Run with --detailed for complete finding details.");
+        }
+
         out.println();
+    }
+
+    private String getRiskIndicator(RiskLevel level) {
+        return switch (level) {
+            case CRITICAL -> color(RED, "[CRIT]");
+            case HIGH -> color(YELLOW, "[HIGH]");
+            case MEDIUM -> "[MED]";
+            case LOW -> "[LOW]";
+            case INFO -> color(CYAN, "[INFO]");
+        };
     }
 
     // Formatting helpers
