@@ -209,20 +209,14 @@ public class ConsoleReporter implements Reporter {
 
                 out.println(leafPrefix + leaf.simpleLeafType());
 
-                // Show paths - all paths when detailed, up to 3 otherwise
+                // Show all paths
                 List<PortTree.PathEntry> paths = leaf.paths();
-                int pathLimit = detailed ? paths.size() : Math.min(3, paths.size());
-                for (int k = 0; k < pathLimit; k++) {
+                for (int k = 0; k < paths.size(); k++) {
                     PortTree.PathEntry path = paths.get(k);
                     String pathPrefix = isLastLeaf ? "    " : TREE_PIPE;
-                    boolean isLastPath = (k == pathLimit - 1);
+                    boolean isLastPath = (k == paths.size() - 1);
                     String entryPrefix = isLastPath ? TREE_LAST : TREE_BRANCH;
                     out.println(pathPrefix + entryPrefix + path.pathString());
-                }
-
-                if (!detailed && paths.size() > 3) {
-                    String morePrefix = isLastLeaf ? "    " : TREE_PIPE;
-                    out.println(morePrefix + TREE_LAST + "... and " + (paths.size() - 3) + " more paths (use -d for all)");
                 }
             }
             out.println();
