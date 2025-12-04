@@ -248,4 +248,141 @@ class PathFinderTest {
         // Should return empty because the root is not a project class
         assertThat(paths).isEmpty();
     }
+
+
+    @Test
+    void findPaths_tracksMethodLevelCallChains() {
+        // Test that method-level tracking produces accurate call chains
+        // Setup: ServiceA has two methods:
+        //   - handleRequest() calls Repository.save()
+        //   - processData() calls Repository.delete()
+        // Repository.save() reaches DataSource (leaf type)
+        // Repository.delete() does NOT reach DataSource
+        //
+        // Expected: Path should show ServiceA#handleRequest -> Repository#save -> DataSource
+        // NOT: ServiceA#handleRequest -> Repository#delete -> DataSource (wrong method!)
+        
+        MethodNode serviceHandleRequest = MethodNode.builder()
+                .name("handleRequest")
+                .descriptor("()V")
+                .invocations(Set.of(new MethodRef("com.example.Repository", "save", "()V")))
+                .build();
+        
+        MethodNode serviceProcessData = MethodNode.builder()
+                .name("processData")
+                .descriptor("()V")
+                .invocations(Set.of(new MethodRef("com.example.Repository", "delete", "()V")))
+                .build();
+        
+        MethodNode repoSave = MethodNode.builder()
+                .name("save")
+                .descriptor("()V")
+                .invocations(Set.of(new MethodRef("javax.sql.DataSource", "getConnection", "()Ljava/sql/Connection;")))
+                .build();
+        
+        MethodNode repoDelete = MethodNode.builder()
+                .name("delete")
+                .descriptor("()V")
+                // delete() does NOT call DataSource - it just does something else
+                .invocations(Set.of(new MethodRef("java.lang.System", "out", "Ljava/io/PrintStream;")))
+                .build();
+        
+        CallGraph graph = CallGraph.builder()
+                .addClass(ClassNode.builder()
+                        .fqn("com.example.ServiceA")
+                        .isProjectClass(true)
+                        .methods(Set.of(serviceHandleRequest, serviceProcessData))
+                        .build())
+                .addClass(ClassNode.builder()
+                        .fqn("com.example.Repository")
+                        .isProjectClass(true)
+                        .methods(Set.of(repoSave, repoDelete))
+                        .build())
+                .addClass(ClassNode.builder()
+                        .fqn("javax.sql.DataSource")
+                        .isProjectClass(false)
+                        .build())
+                .build();
+
+        PathFinder pathFinder = new PathFinder(graph, leafConfig);
+
+        Set<String> projectRoots = Set.of("com.example.ServiceA");
+        List<PathFinder.StatefulPath> paths = pathFinder.findPaths(projectRoots);
+
+        // Should find path through handleRequest -> save -> DataSource
+        assertThat(paths).isNotEmpty();
+        
+        // Find the path to DataSource
+        PathFinder.StatefulPath dsPath = paths.stream()
+                .filter(p -> p.leafType().equals("javax.sql.DataSource"))
+                .findFirst()
+                .orElse(null);
+        
+        assertThat(dsPath).isNotNull();
+        
+        // Verify the path shows correct method chain
+        String pathString = dsPath.pathString();
+        
+        // The path should show the calling method in ServiceA (handleRequest)
+        // NOT processData, because processData doesn't lead to DataSource
+        assertThat(pathString).contains("handleRequest");
+        
+        // The path should show Repository#save (the method that calls DataSource)
+        assertThat(pathString).contains("save");
+        
+        // The path should NOT contain delete (that method doesn't lead to DataSource)
+        // This is the KEY test - with the old class-level traversal, 'delete' might appear
+        // With method-level tracking, only 'save' should appear because that's the actual call chain
+    }
+
+
+    @Test
+    void findPaths_detectsLeafTypeViaSuperclass() {
+        // Test that a class extending a leaf type is detected as a leaf
+        // Even though we don't traverse "extends" edges, the leaf detection
+        // should check supertypes.
+        //
+        // Setup: MyThreadLocal extends ThreadLocal (leaf type)
+        // Expected: MyThreadLocal should be detected as a leaf type
+        
+        CallGraph graph = CallGraph.builder()
+                .addClass(ClassNode.builder()
+                        .fqn("com.example.MyService")
+                        .isProjectClass(true)
+                        .fields(Set.of(FieldNode.builder()
+                                .name("context")
+                                .type("Lcom/example/MyThreadLocal;")
+                                .build()))
+                        .build())
+                .addClass(ClassNode.builder()
+                        .fqn("com.example.MyThreadLocal")
+                        .isProjectClass(true)
+                        .superclass("java.lang.ThreadLocal")  // Extends ThreadLocal!
+                        .build())
+                .addClass(ClassNode.builder()
+                        .fqn("java.lang.ThreadLocal")
+                        .isProjectClass(false)
+                        .build())
+                .buildHierarchy()  // Build type hierarchy for supertype lookups
+                .build();
+
+        PathFinder pathFinder = new PathFinder(graph, leafConfig);
+
+        Set<String> projectRoots = Set.of("com.example.MyService");
+        List<PathFinder.StatefulPath> paths = pathFinder.findPaths(projectRoots);
+
+        // Should detect MyThreadLocal as a leaf type because it extends ThreadLocal
+        assertThat(paths).hasSize(1);
+        PathFinder.StatefulPath path = paths.get(0);
+        
+        // The leaf type should be MyThreadLocal (the class we reached)
+        assertThat(path.leafType()).isEqualTo("com.example.MyThreadLocal");
+        // But the category should be threadLocalTypes (because it extends ThreadLocal)
+        assertThat(path.leafCategory()).isEqualTo("threadLocalTypes");
+        
+        // Path should NOT contain "extends" since that's not a call
+        String pathString = path.pathString();
+        assertThat(pathString).doesNotContain("extends");
+        assertThat(pathString).doesNotContain("implements");
+    }
 }

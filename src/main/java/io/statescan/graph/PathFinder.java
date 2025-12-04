@@ -26,9 +26,32 @@ public class PathFinder {
 
     /**
      * Internal record for tracking edge information during traversal.
-     * Captures the target class and the member (field/method) that leads to it.
+     * <p>
+     * For INVOCATION edges: sourceMethod is the calling method, targetMethod is the called method
+     * For FIELD edges: sourceMethod is the method accessing the field (or null for class-level)
+     * For INHERITANCE/DI_BINDING: both are null (class-level relationships)
      */
-    private record EdgeInfo(String target, String memberName, EdgeType edgeType) {}
+    private record EdgeInfo(
+            String targetClass,
+            String targetMethod,   // For INVOCATION: the specific method being called
+            String sourceMethod,   // The method in the source class creating this edge
+            EdgeType edgeType
+    ) {
+        /** Convenience constructor for class-level edges (inheritance, DI) */
+        static EdgeInfo classLevel(String targetClass, String label, EdgeType edgeType) {
+            return new EdgeInfo(targetClass, null, label, edgeType);
+        }
+        
+        /** Convenience constructor for method invocations */
+        static EdgeInfo invocation(String targetClass, String targetMethod, String sourceMethod) {
+            return new EdgeInfo(targetClass, targetMethod, sourceMethod, EdgeType.INVOCATION);
+        }
+        
+        /** Convenience constructor for field access */
+        static EdgeInfo field(String targetClass, String fieldName, String sourceMethod) {
+            return new EdgeInfo(targetClass, null, sourceMethod != null ? sourceMethod : fieldName, EdgeType.FIELD);
+        }
+    }
 
     /**
      * Represents a path from a project root to a leaf type.
@@ -100,70 +123,99 @@ public class PathFinder {
 
     /**
      * Performs BFS from a single root to find all paths to leaf types.
+     * <p>
+     * Uses method-level context tracking to ensure accurate call chains.
+     * When traversing via INVOCATION, locks to the specific target method
+     * and only follows edges from that method.
      *
      * @param root          The project class to start from
      * @param results       List to collect found paths
      * @param globalVisited Shared visited set across all BFS traversals to avoid cycles and duplicates
      */
     private void bfsFromRoot(String root, List<StatefulPath> results, Set<String> globalVisited) {
-        record TraversalState(String node, List<PathStep> pathSoFar) {}
+        // TraversalState now tracks method context for precise call chain tracking
+        // methodContext: null = class-level (any method), non-null = specific method only
+        record TraversalState(String className, String methodContext, List<PathStep> pathSoFar) {}
 
         Queue<TraversalState> queue = new LinkedList<>();
+        // Track visited (class, method) pairs to handle method-level cycles
         Set<String> localVisited = new HashSet<>();
 
-        // Start with root node (no incoming edge)
-        queue.add(new TraversalState(root, List.of(PathStep.root(root))));
+        // Start with root node (no method context - entry from any method)
+        queue.add(new TraversalState(root, null, List.of(PathStep.root(root))));
 
         while (!queue.isEmpty()) {
             TraversalState state = queue.poll();
-            String current = state.node();
+            String currentClass = state.className();
+            String currentMethod = state.methodContext();
 
-            // Skip if already visited locally (within this BFS)
-            if (!localVisited.add(current)) {
+            // Create visit key that includes method context for precise cycle detection
+            String visitKey = currentClass + "#" + (currentMethod != null ? currentMethod : "*");
+            if (!localVisited.add(visitKey)) {
                 continue;
             }
 
             // Check if current is a leaf type
-            String leafCategory = getLeafCategory(current);
+            String leafCategory = getLeafCategory(currentClass);
             if (leafCategory != null) {
-                RiskLevel risk = getRiskLevel(current, leafCategory);
+                RiskLevel risk = getRiskLevel(currentClass, leafCategory);
+                // For leaf nodes, update the final step to show the target method if available
+                List<PathStep> finalPath = state.pathSoFar();
+                if (currentMethod != null && !finalPath.isEmpty()) {
+                    finalPath = new ArrayList<>(finalPath);
+                    PathStep lastStep = finalPath.get(finalPath.size() - 1);
+                    // Update leaf node step to show the specific method reached
+                    finalPath.set(finalPath.size() - 1, new PathStep(
+                            lastStep.className(),
+                            currentMethod,
+                            lastStep.edgeType()
+                    ));
+                }
                 results.add(new StatefulPath(
                         root,
-                        state.pathSoFar(),
-                        current,
+                        finalPath,
+                        currentClass,
                         leafCategory,
                         risk
                 ));
-                // Don't continue traversal from leaf types
                 continue;
             }
 
-            // Skip further traversal if this node was already fully explored by another root
-            // This prevents duplicate sub-paths when multiple project classes reach the same library code
-            if (globalVisited.contains(current) && !isProjectClass(current)) {
+            // Skip if already globally explored (but allow project classes to be re-explored)
+            String globalKey = currentClass + "#" + (currentMethod != null ? currentMethod : "*");
+            if (globalVisited.contains(globalKey) && !isProjectClass(currentClass)) {
                 continue;
             }
-            globalVisited.add(current);
+            globalVisited.add(globalKey);
 
-            // Get neighbors via all edge types (now with edge info)
-            for (EdgeInfo edge : getNeighborsWithEdges(current)) {
-                if (!localVisited.contains(edge.target()) && !isExcludedPackage(edge.target())) {
+            // Get neighbors with method-aware edge discovery
+            for (EdgeInfo edge : getNeighborsWithEdges(currentClass, currentMethod)) {
+                String targetVisitKey = edge.targetClass() + "#" + (edge.targetMethod() != null ? edge.targetMethod() : "*");
+                if (!localVisited.contains(targetVisitKey) && !isExcludedPackage(edge.targetClass())) {
                     List<PathStep> newPath = new ArrayList<>(state.pathSoFar());
 
-                    // Update the previous step with the member that leads to this neighbor
+                    // Update previous step to show the SOURCE method that creates this edge
                     if (!newPath.isEmpty()) {
                         PathStep lastStep = newPath.get(newPath.size() - 1);
-                        // Replace last step with one that includes the outgoing member
                         newPath.set(newPath.size() - 1, new PathStep(
                                 lastStep.className(),
-                                edge.memberName(),
+                                edge.sourceMethod(),
                                 edge.edgeType()
                         ));
                     }
 
-                    // Add the new node (leaf status will be determined on next iteration)
-                    newPath.add(PathStep.root(edge.target()));
-                    queue.add(new TraversalState(edge.target(), newPath));
+                    // Add the target node
+                    newPath.add(PathStep.root(edge.targetClass()));
+
+                    // Determine method context for next iteration
+                    // INVOCATION: lock to the specific target method
+                    // FIELD/INHERITANCE/DI_BINDING: class-level (any method)
+                    String nextMethodContext = null;
+                    if (edge.edgeType() == EdgeType.INVOCATION) {
+                        nextMethodContext = edge.targetMethod();
+                    }
+
+                    queue.add(new TraversalState(edge.targetClass(), nextMethodContext, newPath));
                 }
             }
         }
@@ -171,9 +223,16 @@ public class PathFinder {
 
     /**
      * Gets all neighbor classes from the current class, with edge information.
-     * Follows field types, method invocations, inheritance, and DI bindings.
+     * <p>
+     * When methodContext is null (class-level), returns edges from ALL methods.
+     * When methodContext is specified, returns ONLY edges from that specific method,
+     * enabling accurate method-to-method call chain tracking.
+     *
+     * @param className     The class to get neighbors for
+     * @param methodContext The specific method to get edges from (null for all methods)
+     * @return Set of edges to neighbor classes
      */
-    private Set<EdgeInfo> getNeighborsWithEdges(String className) {
+    private Set<EdgeInfo> getNeighborsWithEdges(String className, String methodContext) {
         Set<EdgeInfo> edges = new HashSet<>();
 
         Optional<ClassNode> clsOpt = graph.getClass(className);
@@ -183,39 +242,74 @@ public class PathFinder {
 
         ClassNode cls = clsOpt.get();
 
-        // 1. Superclass
-        if (cls.superclass() != null && !isJavaLangObject(cls.superclass())) {
-            edges.add(new EdgeInfo(cls.superclass(), "extends", EdgeType.INHERITANCE));
-        }
+        // NOTE: We deliberately do NOT add INHERITANCE edges (extends/implements) here.
+        // "extends" is a type relationship, not a method call. The actual calls are:
+        //   - super() calls → captured as INVOCATION to parent's <init>
+        //   - super.method() → captured as INVOCATION to parent's method
+        //   - inherited method resolution → handled by "method not found, check superclass" logic below
+        // Leaf type detection via inheritance is handled in getLeafCategory() by checking supertypes.
 
-        // 2. Interfaces
-        for (String iface : cls.interfaces()) {
-            edges.add(new EdgeInfo(iface, "implements", EdgeType.INHERITANCE));
-        }
+        if (methodContext == null) {
+            // CLASS-LEVEL: Get edges from ALL methods
+            
+            // Field types (class-level view of all fields)
+            for (FieldNode field : cls.fields()) {
+                String fieldType = extractTypeName(field.type());
+                if (fieldType != null) {
+                    edges.add(EdgeInfo.field(fieldType, field.name(), null));
+                }
+            }
 
-        // 3. Field types
-        for (FieldNode field : cls.fields()) {
-            String fieldType = extractTypeName(field.type());
-            if (fieldType != null) {
-                edges.add(new EdgeInfo(fieldType, field.name(), EdgeType.FIELD));
+            // Method invocations from all methods
+            for (MethodNode method : cls.methods()) {
+                for (MethodRef inv : method.invocations()) {
+                    edges.add(EdgeInfo.invocation(inv.owner(), inv.name(), method.name()));
+                }
+            }
+        } else {
+            // METHOD-LEVEL: Only get edges from the specific method
+            Set<MethodNode> methods = cls.findMethodsByName(methodContext);
+            
+            for (MethodNode method : methods) {
+                // Method invocations from this specific method only
+                for (MethodRef inv : method.invocations()) {
+                    edges.add(EdgeInfo.invocation(inv.owner(), inv.name(), method.name()));
+                }
+                
+                // Field accesses from this method (track fields accessed by this method)
+                for (FieldRef fieldAccess : method.fieldAccesses()) {
+                    String fieldType = extractTypeName(fieldAccess.type());
+                    if (fieldType != null && !fieldAccess.owner().equals(className)) {
+                        // External field access - add edge to the owning class
+                        edges.add(EdgeInfo.field(fieldAccess.owner(), fieldAccess.name(), method.name()));
+                    }
+                }
+            }
+            
+            // If method not found in this class, it might be inherited - check superclass
+            if (methods.isEmpty() && cls.superclass() != null) {
+                // The method might be defined in superclass, add edge to explore there
+                edges.add(EdgeInfo.invocation(cls.superclass(), methodContext, methodContext));
             }
         }
 
-        // 4. Method invocation targets
-        for (MethodNode method : cls.methods()) {
-            for (MethodRef inv : method.invocations()) {
-                edges.add(new EdgeInfo(inv.owner(), inv.name(), EdgeType.INVOCATION));
-            }
-        }
-
-        // 5. DI BINDING EDGES (critical addition!)
-        // For each neighbor that's an interface with DI binding, also add implementations
+        // DI BINDING EDGES
+        // For each neighbor that's an interface/abstract with DI binding, also add implementations
         Set<String> processedNeighbors = new HashSet<>();
         for (EdgeInfo edge : new HashSet<>(edges)) {
-            processedNeighbors.add(edge.target());
-            for (String impl : graph.getImplementations(edge.target())) {
+            processedNeighbors.add(edge.targetClass());
+            
+            // For invocation edges, also add DI bindings for the target class
+            // This handles interface dispatch: if calling InterfaceA.method(), 
+            // also add edge to ConcreteImpl.method()
+            for (String impl : graph.getImplementations(edge.targetClass())) {
                 if (!processedNeighbors.contains(impl)) {
-                    edges.add(new EdgeInfo(impl, "@Inject", EdgeType.DI_BINDING));
+                    if (edge.edgeType() == EdgeType.INVOCATION && edge.targetMethod() != null) {
+                        // Preserve the target method for interface dispatch
+                        edges.add(new EdgeInfo(impl, edge.targetMethod(), "@Inject->" + edge.targetMethod(), EdgeType.DI_BINDING));
+                    } else {
+                        edges.add(EdgeInfo.classLevel(impl, "@Inject", EdgeType.DI_BINDING));
+                    }
                 }
             }
         }
@@ -223,7 +317,7 @@ public class PathFinder {
         // Also check if the current class itself has DI bindings
         for (String impl : graph.getImplementations(className)) {
             if (!processedNeighbors.contains(impl)) {
-                edges.add(new EdgeInfo(impl, "@Inject", EdgeType.DI_BINDING));
+                edges.add(EdgeInfo.classLevel(impl, "@Inject", EdgeType.DI_BINDING));
             }
         }
 
@@ -257,8 +351,30 @@ public class PathFinder {
 
     /**
      * Returns the leaf category if the class is a configured leaf type, null otherwise.
+     * Also checks supertypes to handle cases like "class MyCache extends ConcurrentHashMap".
      */
     private String getLeafCategory(String className) {
+        // First check the class itself
+        String category = getLeafCategoryDirect(className);
+        if (category != null) {
+            return category;
+        }
+        
+        // Then check supertypes (handles cases like MyThreadLocal extends ThreadLocal)
+        for (String supertype : graph.allSupertypes(className)) {
+            category = getLeafCategoryDirect(supertype);
+            if (category != null) {
+                return category;
+            }
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Checks if a specific class name (not its supertypes) matches a leaf type.
+     */
+    private String getLeafCategoryDirect(String className) {
         if (leafConfig.isExternalStateType(className)) {
             return "externalStateTypes";
         }

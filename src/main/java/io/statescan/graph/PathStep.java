@@ -3,15 +3,24 @@ package io.statescan.graph;
 import io.statescan.util.TypeUtils;
 
 /**
- * Represents a single step in a call path, including the class and the member
- * (field or method) that leads to the next step.
+ * Represents a single step in a call path, identifying the specific method or 
+ * class-level relationship that forms part of the call chain.
  * <p>
- * For example, if class A has field "dataSource" of type B, and we traverse from A to B,
- * the PathStep for A would be: (className="com.example.A", memberName="dataSource", edgeType=FIELD)
+ * <b>Key semantic:</b> memberName identifies the SOURCE method in THIS class that 
+ * creates the outgoing edge to the next step. This enables accurate method-level
+ * call chain tracking.
+ * <p>
+ * Examples:
+ * <ul>
+ *   <li>INVOCATION: ServiceA#handleRequest -> Repository#save means 
+ *       handleRequest() in ServiceA calls save() in Repository</li>
+ *   <li>FIELD: ServiceA#dataSource means ServiceA accesses field dataSource</li>
+ *   <li>INHERITANCE: ServiceA#extends means ServiceA extends the next class</li>
+ * </ul>
  *
  * @param className  Fully qualified class name at this step
- * @param memberName The field/method name that leads to the next step (null for leaf nodes)
- * @param edgeType   How this step connects to the next (null for leaf nodes)
+ * @param memberName The method/field in THIS class that creates the outgoing edge (null for root/leaf)
+ * @param edgeType   How this step connects to the next (null for root/leaf nodes)
  */
 public record PathStep(
         String className,
