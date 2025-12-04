@@ -155,7 +155,7 @@
                 <configuration>
                     <archive>
                         <manifest>
-                            <mainClass>io.statescan.StateScanCli</mainClass>
+                            <mainClass>io.statescan.ActorScanCli</mainClass>
                         </manifest>
                     </archive>
                 </configuration>
@@ -175,7 +175,7 @@
                         <configuration>
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <mainClass>io.statescan.StateScanCli</mainClass>
+                                    <mainClass>io.statescan.ActorScanCli</mainClass>
                                 </transformer>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
                             </transformers>

@@ -4,10 +4,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Utility for parsing JVM method and field descriptors.
+ * Utility for parsing JVM method descriptors.
  * <p>
  * Method descriptors follow the format: (ParameterTypes)ReturnType
- * Field descriptors follow the format: Type
  * <p>
  * Type encodings:
  * <ul>
@@ -28,21 +27,6 @@ public final class DescriptorParser {
 
     private DescriptorParser() {
         // Utility class
-    }
-
-    /**
-     * Parses a field descriptor and returns the type as FQN.
-     * Field descriptors are just a single type encoding.
-     *
-     * @param descriptor The field descriptor (e.g., "Ljava/util/Map;", "I", "[Ljava/lang/String;")
-     * @return The type FQN, or "unknown" if invalid
-     */
-    public static String parseFieldType(String descriptor) {
-        if (descriptor == null || descriptor.isEmpty()) {
-            return "unknown";
-        }
-        ParseResult result = parseType(descriptor, 0);
-        return result != null ? result.type : "unknown";
     }
 
     /**
@@ -96,33 +80,6 @@ public final class DescriptorParser {
 
         ParseResult result = parseType(descriptor, returnStart + 1);
         return result != null ? result.type : null;
-    }
-
-    /**
-     * Converts an internal class name (with /) to FQN (with .).
-     *
-     * @param internalName The internal name (e.g., "java/lang/String")
-     * @return The FQN (e.g., "java.lang.String")
-     */
-    public static String toFqn(String internalName) {
-        if (internalName == null) {
-            return null;
-        }
-        return internalName.replace('/', '.');
-    }
-
-    /**
-     * Gets the simple name from an FQN.
-     *
-     * @param fqn The fully qualified name
-     * @return The simple name (last part after '.')
-     */
-    public static String simpleName(String fqn) {
-        if (fqn == null) {
-            return null;
-        }
-        int lastDot = fqn.lastIndexOf('.');
-        return lastDot >= 0 ? fqn.substring(lastDot + 1) : fqn;
     }
 
     /**
