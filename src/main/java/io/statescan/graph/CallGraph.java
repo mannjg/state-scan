@@ -275,7 +275,8 @@ public class CallGraph {
      * This is the preferred method for adding Guice bindings with qualifier support.
      */
     public CallGraph withDIBindings(Map<BindingKey, Set<String>> additionalBindings) {
-        Map<BindingKey, Set<String>> mergedBindings = new HashMap<>(diBindings);
+        Map<BindingKey, Set<String>> mergedBindings = diBindings.entrySet().stream()
+                .collect(Collectors.toMap(Map.Entry::getKey, e -> new HashSet<>(e.getValue())));
         additionalBindings.forEach((key, impls) ->
                 mergedBindings.computeIfAbsent(key, k -> new HashSet<>()).addAll(impls));
         return new CallGraph(classes, subtypes, supertypes, calledBy, mergedBindings);
@@ -286,7 +287,8 @@ public class CallGraph {
      * This is for backward compatibility with CDI discovery that doesn't use qualifiers yet.
      */
     public CallGraph withUnqualifiedDIBindings(Map<String, Set<String>> additionalBindings) {
-        Map<BindingKey, Set<String>> mergedBindings = new HashMap<>(diBindings);
+        Map<BindingKey, Set<String>> mergedBindings = diBindings.entrySet().stream()
+                .collect(Collectors.toMap(Map.Entry::getKey, e -> new HashSet<>(e.getValue())));
         additionalBindings.forEach((type, impls) ->
                 mergedBindings.computeIfAbsent(BindingKey.unqualified(type), k -> new HashSet<>()).addAll(impls));
         return new CallGraph(classes, subtypes, supertypes, calledBy, mergedBindings);
