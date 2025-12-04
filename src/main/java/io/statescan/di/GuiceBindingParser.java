@@ -244,8 +244,9 @@ public class GuiceBindingParser {
      * Checks if a class is a Guice module (extends AbstractModule, PrivateModule, or implements Module).
      */
     private boolean isGuiceModule(ClassNode cls, CallGraph graph) {
-        // Direct check
-        if (GUICE_MODULE_BASES.contains(cls.superclass())) {
+        // Direct check - guard against null superclass
+        String superclass = cls.superclass();
+        if (superclass != null && GUICE_MODULE_BASES.contains(superclass)) {
             return true;
         }
         if (cls.interfaces().stream().anyMatch(i -> i.contains("Module"))) {
@@ -253,7 +254,6 @@ public class GuiceBindingParser {
         }
 
         // Check superclass chain
-        String superclass = cls.superclass();
         Set<String> visited = new HashSet<>();
 
         while (superclass != null && !visited.contains(superclass)) {
