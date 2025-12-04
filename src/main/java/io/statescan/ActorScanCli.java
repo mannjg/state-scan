@@ -45,6 +45,10 @@ public class ActorScanCli implements Callable<Integer> {
             description = "Scan as Maven multi-module project")
     private boolean mavenProject = false;
 
+    @Option(names = {"--root-packages"},
+            description = "Additional package prefixes to scan from transitive dependencies (comma-separated, requires --maven)")
+    private String rootPackages;
+
     @Override
     public Integer call() throws Exception {
         // Validate path
@@ -62,8 +66,23 @@ public class ActorScanCli implements Callable<Integer> {
                 .collect(Collectors.toSet());
         }
 
+        // Parse root packages for dependency scanning
+        Set<String> rootPkgs = Set.of();
+        if (rootPackages != null && !rootPackages.isBlank()) {
+            rootPkgs = Arrays.stream(rootPackages.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .collect(Collectors.toSet());
+        }
+
+        // Validate: --root-packages requires --maven
+        if (!rootPkgs.isEmpty() && !mavenProject) {
+            System.err.println("Error: --root-packages requires --maven mode");
+            return 1;
+        }
+
         // Create scanner
-        ProjectScanner scanner = new ProjectScanner(packages);
+        ProjectScanner scanner = new ProjectScanner(packages, rootPkgs);
 
         // Scan
         ScanResult result;

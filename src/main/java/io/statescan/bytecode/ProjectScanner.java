@@ -17,11 +17,26 @@ import java.util.jar.JarFile;
  * <p>
  * For Maven projects, looks for compiled classes in target/classes directories.
  * Can also scan JAR files directly.
+ * <p>
+ * When rootPackages are specified, also scans transitive dependency JARs
+ * for classes matching those package prefixes.
  */
 public class ProjectScanner {
 
     private final Set<String> packagePrefixes;
+    private final Set<String> rootPackages;
     private int classesScanned = 0;
+
+    /**
+     * Creates a ProjectScanner that filters classes by package prefix.
+     *
+     * @param packagePrefixes Set of package prefixes to include for project classes (empty means all)
+     * @param rootPackages Set of package prefixes to scan from transitive dependencies
+     */
+    public ProjectScanner(Set<String> packagePrefixes, Set<String> rootPackages) {
+        this.packagePrefixes = packagePrefixes != null ? packagePrefixes : Set.of();
+        this.rootPackages = rootPackages != null ? rootPackages : Set.of();
+    }
 
     /**
      * Creates a ProjectScanner that filters classes by package prefix.
@@ -29,14 +44,14 @@ public class ProjectScanner {
      * @param packagePrefixes Set of package prefixes to include (empty means all)
      */
     public ProjectScanner(Set<String> packagePrefixes) {
-        this.packagePrefixes = packagePrefixes != null ? packagePrefixes : Set.of();
+        this(packagePrefixes, Set.of());
     }
 
     /**
      * Creates a ProjectScanner that includes all classes.
      */
     public ProjectScanner() {
-        this(Set.of());
+        this(Set.of(), Set.of());
     }
 
     /**
@@ -54,13 +69,13 @@ public class ProjectScanner {
             // Check if this is a Maven project
             Path targetClasses = path.resolve("target/classes");
             if (Files.isDirectory(targetClasses)) {
-                scanDirectory(targetClasses, classes);
+                scanDirectory(targetClasses, classes, this::isProjectClass);
             } else {
                 // Scan the directory directly (might be a classes directory already)
-                scanDirectory(path, classes);
+                scanDirectory(path, classes, this::isProjectClass);
             }
         } else if (path.toString().endsWith(".jar")) {
-            scanJar(path, classes);
+            scanJar(path, classes, this::isProjectClass);
         } else {
             throw new IllegalArgumentException("Path must be a directory or JAR file: " + path);
         }
@@ -101,7 +116,7 @@ public class ProjectScanner {
         // Check for root target/classes
         Path rootClasses = projectRoot.resolve("target/classes");
         if (Files.isDirectory(rootClasses)) {
-            scanDirectory(rootClasses, classes);
+            scanDirectory(rootClasses, classes, this::isProjectClass);
         }
 
         // Look for module subdirectories with target/classes
@@ -110,23 +125,87 @@ public class ProjectScanner {
                 if (Files.isDirectory(entry)) {
                     Path moduleClasses = entry.resolve("target/classes");
                     if (Files.isDirectory(moduleClasses)) {
-                        scanDirectory(moduleClasses, classes);
+                        scanDirectory(moduleClasses, classes, this::isProjectClass);
                     }
                 }
             }
         }
 
+        // Scan transitive dependencies if rootPackages are specified
+        if (!rootPackages.isEmpty()) {
+            scanDependencyJars(projectRoot, classes);
+        }
+
         return new ScanResult(classes);
     }
 
-    private void scanDirectory(Path directory, Map<String, ClassInfo> classes) throws IOException {
+    /**
+     * Resolves and scans transitive dependency JARs for classes matching rootPackages.
+     */
+    private void scanDependencyJars(Path projectRoot, Map<String, ClassInfo> classes) throws IOException {
+        List<Path> dependencyJars = resolveMavenClasspath(projectRoot);
+        
+        for (Path jarPath : dependencyJars) {
+            if (Files.exists(jarPath)) {
+                scanJar(jarPath, classes, this::isRootPackageClass);
+            }
+        }
+    }
+
+    /**
+     * Resolves Maven transitive dependencies using mvn dependency:build-classpath.
+     *
+     * @param projectRoot The Maven project root directory
+     * @return List of JAR file paths
+     * @throws IOException If the Maven command fails
+     */
+    private List<Path> resolveMavenClasspath(Path projectRoot) throws IOException {
+        try {
+            ProcessBuilder pb = new ProcessBuilder(
+                "mvn", "dependency:build-classpath", "-q", "-DincludeScope=runtime", "-Dmdep.outputFile=/dev/stdout"
+            );
+            pb.directory(projectRoot.toFile());
+            pb.redirectErrorStream(false);
+            
+            Process process = pb.start();
+            String output;
+            try (InputStream is = process.getInputStream()) {
+                output = new String(is.readAllBytes()).trim();
+            }
+            
+            int exitCode = process.waitFor();
+            if (exitCode != 0) {
+                System.err.println("Warning: Failed to resolve Maven dependencies (exit code " + exitCode + ")");
+                return List.of();
+            }
+            
+            if (output.isEmpty()) {
+                return List.of();
+            }
+            
+            // Classpath entries are separated by system path separator
+            String separator = System.getProperty("path.separator");
+            return Arrays.stream(output.split(separator))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty() && s.endsWith(".jar"))
+                .map(Path::of)
+                .toList();
+                
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Maven dependency resolution interrupted", e);
+        }
+    }
+
+    private void scanDirectory(Path directory, Map<String, ClassInfo> classes, 
+                               java.util.function.Predicate<String> filter) throws IOException {
         Files.walkFileTree(directory, new SimpleFileVisitor<>() {
             @Override
             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
                 if (file.toString().endsWith(".class")) {
                     try (InputStream is = Files.newInputStream(file)) {
                         ClassInfo info = scanClass(is);
-                        if (info != null && isProjectClass(info.fqn())) {
+                        if (info != null && filter.test(info.fqn())) {
                             classes.put(info.fqn(), info);
                         }
                     } catch (Exception e) {
@@ -145,7 +224,8 @@ public class ProjectScanner {
         });
     }
 
-    private void scanJar(Path jarPath, Map<String, ClassInfo> classes) throws IOException {
+    private void scanJar(Path jarPath, Map<String, ClassInfo> classes,
+                         java.util.function.Predicate<String> filter) throws IOException {
         try (JarFile jarFile = new JarFile(jarPath.toFile())) {
             Enumeration<JarEntry> entries = jarFile.entries();
             while (entries.hasMoreElements()) {
@@ -159,7 +239,7 @@ public class ProjectScanner {
 
                 try (InputStream is = jarFile.getInputStream(entry)) {
                     ClassInfo info = scanClass(is);
-                    if (info != null && isProjectClass(info.fqn())) {
+                    if (info != null && filter.test(info.fqn())) {
                         classes.put(info.fqn(), info);
                     }
                 } catch (Exception e) {
@@ -183,6 +263,10 @@ public class ProjectScanner {
             return true;
         }
         return packagePrefixes.stream().anyMatch(fqn::startsWith);
+    }
+
+    private boolean isRootPackageClass(String fqn) {
+        return rootPackages.stream().anyMatch(fqn::startsWith);
     }
 
     /**
