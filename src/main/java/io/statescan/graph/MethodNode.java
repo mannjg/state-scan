@@ -1,5 +1,6 @@
 package io.statescan.graph;
 
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -11,6 +12,7 @@ import java.util.Set;
  * @param fieldAccesses     Set of fields this method accesses
  * @param classConstantRefs Set of class constants referenced via LDC (e.g., SomeClass.class)
  * @param annotations       Set of annotation class names on this method
+ * @param parameters        List of parameters with their types and annotations (for DI-relevant methods)
  * @param isStatic          Whether the method is static
  * @param isPublic          Whether the method is public
  * @param isAbstract        Whether the method is abstract
@@ -22,6 +24,7 @@ public record MethodNode(
         Set<FieldRef> fieldAccesses,
         Set<String> classConstantRefs,
         Set<String> annotations,
+        List<ParameterNode> parameters,
         boolean isStatic,
         boolean isPublic,
         boolean isAbstract
@@ -53,6 +56,11 @@ public record MethodNode(
         } else {
             annotations = Set.copyOf(annotations);
         }
+        if (parameters == null) {
+            parameters = List.of();
+        } else {
+            parameters = List.copyOf(parameters);
+        }
     }
 
     /**
@@ -77,6 +85,26 @@ public record MethodNode(
                 .anyMatch(a -> a.equals(annotationClass) ||
                         a.endsWith("." + annotationClass) ||
                         a.endsWith("/" + annotationClass));
+    }
+
+    /**
+     * Checks if this is an @Inject constructor.
+     * In Guice/CDI, all parameters of an @Inject constructor are injection points.
+     */
+    public boolean isInjectConstructor() {
+        return isConstructor() && (
+                hasAnnotation("javax.inject.Inject") ||
+                hasAnnotation("jakarta.inject.Inject") ||
+                hasAnnotation("com.google.inject.Inject")
+        );
+    }
+
+    /**
+     * Checks if this method has injection point parameters.
+     * True for @Inject constructors and @Provides methods.
+     */
+    public boolean hasInjectionParameters() {
+        return !parameters.isEmpty() && (isInjectConstructor() || isProviderMethod());
     }
 
     /**
@@ -137,6 +165,7 @@ public record MethodNode(
         private Set<FieldRef> fieldAccesses = Set.of();
         private Set<String> classConstantRefs = Set.of();
         private Set<String> annotations = Set.of();
+        private List<ParameterNode> parameters = List.of();
         private boolean isStatic;
         private boolean isPublic;
         private boolean isAbstract;
@@ -171,6 +200,11 @@ public record MethodNode(
             return this;
         }
 
+        public Builder parameters(List<ParameterNode> parameters) {
+            this.parameters = parameters;
+            return this;
+        }
+
         public Builder isStatic(boolean isStatic) {
             this.isStatic = isStatic;
             return this;
@@ -189,7 +223,8 @@ public record MethodNode(
         public MethodNode build() {
             return new MethodNode(
                     name, descriptor, invocations, fieldAccesses,
-                    classConstantRefs, annotations, isStatic, isPublic, isAbstract
+                    classConstantRefs, annotations, parameters,
+                    isStatic, isPublic, isAbstract
             );
         }
     }

@@ -71,7 +71,7 @@ public class ReachabilityAnalyzer {
                 addIfNew(iface, reachable, workQueue);
             }
 
-            // Follow method invocation edges
+            // Follow method invocation edges and constructor injection
             for (MethodNode method : currentClass.methods()) {
                 for (MethodRef invocation : method.invocations()) {
                     addIfNew(invocation.owner(), reachable, workQueue);
@@ -84,6 +84,21 @@ public class ReachabilityAnalyzer {
                     String fieldType = extractTypeFromDescriptor(fieldAccess.type());
                     if (fieldType != null) {
                         addIfNew(fieldType, reachable, workQueue);
+                    }
+                }
+
+                // Follow constructor injection - @Inject constructor parameters are injection points
+                if (method.isInjectConstructor()) {
+                    for (ParameterNode param : method.parameters()) {
+                        // Add the parameter type itself
+                        addIfNew(param.type(), reachable, workQueue);
+
+                        // Follow qualified DI bindings for this parameter
+                        String qualifier = param.qualifier();
+                        Set<String> impls = graph.getImplementations(param.type(), qualifier);
+                        for (String impl : impls) {
+                            addIfNew(impl, reachable, workQueue);
+                        }
                     }
                 }
             }
@@ -167,11 +182,29 @@ public class ReachabilityAnalyzer {
                         current, nextDepth, reachabilityMap, workQueue);
             }
 
-            // Follow method invocation edges
+            // Follow method invocation edges and constructor injection
             for (MethodNode method : currentClass.methods()) {
                 for (MethodRef invocation : method.invocations()) {
                     addWithReason(invocation.owner(), ReachabilityReason.METHOD_CALL,
                             current + "." + method.name(), nextDepth, reachabilityMap, workQueue);
+                }
+
+                // Follow constructor injection - @Inject constructor parameters are injection points
+                if (method.isInjectConstructor()) {
+                    for (ParameterNode param : method.parameters()) {
+                        // Add the parameter type itself
+                        addWithReason(param.type(), ReachabilityReason.CONSTRUCTOR_INJECTION,
+                                current + ".<init>", nextDepth, reachabilityMap, workQueue);
+
+                        // Follow qualified DI bindings for this parameter
+                        String qualifier = param.qualifier();
+                        Set<String> impls = graph.getImplementations(param.type(), qualifier);
+                        for (String impl : impls) {
+                            String source = current + ".<init>" + (qualifier != null ? " @" + qualifier : "");
+                            addWithReason(impl, ReachabilityReason.CONSTRUCTOR_INJECTION,
+                                    source, nextDepth, reachabilityMap, workQueue);
+                        }
+                    }
                 }
             }
 
@@ -271,13 +304,14 @@ public class ReachabilityAnalyzer {
      * Reason why a class is reachable.
      */
     public enum ReachabilityReason {
-        PROJECT_CLASS,   // It's a project class (root)
-        EXTENDS,         // Superclass of a reachable class
-        IMPLEMENTS,      // Interface implemented by a reachable class
-        METHOD_CALL,     // Called by a method in a reachable class
-        FIELD_TYPE,      // Type of a field in a reachable class
-        ANNOTATION,      // Annotation on a reachable class/method/field
-        DI_BINDING       // Implementation bound via DI (Guice, CDI)
+        PROJECT_CLASS,        // It's a project class (root)
+        EXTENDS,              // Superclass of a reachable class
+        IMPLEMENTS,           // Interface implemented by a reachable class
+        METHOD_CALL,          // Called by a method in a reachable class
+        FIELD_TYPE,           // Type of a field in a reachable class
+        ANNOTATION,           // Annotation on a reachable class/method/field
+        DI_BINDING,           // Implementation bound via DI (Guice, CDI)
+        CONSTRUCTOR_INJECTION // Injected via @Inject constructor parameter
     }
 
     /**

@@ -270,10 +270,25 @@ public class PathFinder {
                 }
             }
 
-            // Method invocations from all methods
+            // Method invocations from all methods and constructor injection
             for (MethodNode method : cls.methods()) {
                 for (MethodRef inv : method.invocations()) {
                     edges.add(EdgeInfo.invocation(inv.owner(), inv.name(), method.name()));
+                }
+
+                // For @Inject constructors, add edges for constructor parameter injection
+                if (method.isInjectConstructor()) {
+                    for (ParameterNode param : method.parameters()) {
+                        // Add edge to the parameter type
+                        edges.add(EdgeInfo.classLevel(param.type(), "<init>", EdgeType.FIELD));
+
+                        // Add qualified DI binding edges for the parameter
+                        String qualifier = param.qualifier();
+                        for (String impl : graph.getImplementations(param.type(), qualifier)) {
+                            String label = qualifier != null ? "@" + qualifier : "@Inject";
+                            edges.add(EdgeInfo.classLevel(impl, label, EdgeType.DI_BINDING));
+                        }
+                    }
                 }
             }
         } else {

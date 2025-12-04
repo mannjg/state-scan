@@ -3,11 +3,10 @@ package io.statescan.bytecode;
 import io.statescan.graph.ClassNode;
 import io.statescan.graph.FieldNode;
 import io.statescan.graph.MethodNode;
+import io.statescan.graph.ParameterNode;
 import org.objectweb.asm.*;
 
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -101,19 +100,31 @@ public class ClassVisitorAdapter extends ClassVisitor {
         boolean isAbstract = (access & Opcodes.ACC_ABSTRACT) != 0;
 
         Set<String> methodAnnotations = new HashSet<>();
+        Map<Integer, Set<String>> parameterAnnotations = new HashMap<>();
 
         // Create our method visitor to capture invocations
         MethodVisitorAdapter methodAdapter = new MethodVisitorAdapter();
 
         return new MethodVisitor(Opcodes.ASM9, methodAdapter) {
             @Override
-            public AnnotationVisitor visitAnnotation(String descriptor, boolean visible) {
-                methodAnnotations.add(descriptorToClassName(descriptor));
+            public AnnotationVisitor visitAnnotation(String desc, boolean visible) {
+                methodAnnotations.add(descriptorToClassName(desc));
+                return null;
+            }
+
+            @Override
+            public AnnotationVisitor visitParameterAnnotation(int parameter, String desc, boolean visible) {
+                parameterAnnotations
+                        .computeIfAbsent(parameter, k -> new HashSet<>())
+                        .add(descriptorToClassName(desc));
                 return null;
             }
 
             @Override
             public void visitEnd() {
+                // Build parameter nodes from descriptor and annotations
+                List<ParameterNode> parameters = buildParameterNodes(descriptor, parameterAnnotations, methodAnnotations);
+
                 MethodNode methodNode = MethodNode.builder()
                         .name(name)
                         .descriptor(descriptor)
@@ -121,6 +132,7 @@ public class ClassVisitorAdapter extends ClassVisitor {
                         .fieldAccesses(methodAdapter.getFieldAccesses())
                         .classConstantRefs(methodAdapter.getClassConstantRefs())
                         .annotations(methodAnnotations)
+                        .parameters(parameters)
                         .isStatic(isStatic)
                         .isPublic(isPublic)
                         .isAbstract(isAbstract)
@@ -128,6 +140,65 @@ public class ClassVisitorAdapter extends ClassVisitor {
                 methods.add(methodNode);
             }
         };
+    }
+
+    /**
+     * Builds ParameterNode list from method descriptor and collected parameter annotations.
+     * Only populates parameters for DI-relevant methods (constructors with @Inject, @Provides methods).
+     */
+    private List<ParameterNode> buildParameterNodes(String descriptor,
+            Map<Integer, Set<String>> parameterAnnotations,
+            Set<String> methodAnnotations) {
+        // Only capture parameters for DI-relevant methods to minimize memory usage
+        boolean isDIRelevant = isInjectAnnotated(methodAnnotations) ||
+                isProvidesAnnotated(methodAnnotations) ||
+                isConstructorDescriptor(descriptor) && !parameterAnnotations.isEmpty();
+
+        if (!isDIRelevant && parameterAnnotations.isEmpty()) {
+            return List.of();
+        }
+
+        // Parse parameter types from descriptor
+        List<String> paramTypes = DescriptorParser.parseParameterTypes(descriptor);
+
+        if (paramTypes.isEmpty()) {
+            return List.of();
+        }
+
+        // Build ParameterNode for each parameter
+        List<ParameterNode> params = new ArrayList<>();
+        for (int i = 0; i < paramTypes.size(); i++) {
+            String type = paramTypes.get(i);
+            Set<String> annotations = parameterAnnotations.getOrDefault(i, Set.of());
+            params.add(new ParameterNode(i, type, annotations));
+        }
+
+        return params;
+    }
+
+    /**
+     * Checks if method annotations indicate @Inject.
+     */
+    private boolean isInjectAnnotated(Set<String> annotations) {
+        return annotations.contains("javax.inject.Inject") ||
+                annotations.contains("jakarta.inject.Inject") ||
+                annotations.contains("com.google.inject.Inject");
+    }
+
+    /**
+     * Checks if method annotations indicate @Provides.
+     */
+    private boolean isProvidesAnnotated(Set<String> annotations) {
+        return annotations.contains("com.google.inject.Provides");
+    }
+
+    /**
+     * Checks if this could be a constructor based on descriptor pattern.
+     * Note: We don't have the method name here, so this is a heuristic.
+     */
+    private boolean isConstructorDescriptor(String descriptor) {
+        // Constructors return void
+        return descriptor != null && descriptor.endsWith(")V");
     }
 
     /**
