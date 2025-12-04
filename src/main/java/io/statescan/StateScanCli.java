@@ -52,7 +52,8 @@ import java.util.stream.Collectors;
                 "Examples:",
                 "  state-scan /path/to/project",
                 "  state-scan /path/to/project --output-format json --output-file report.json",
-                "  state-scan /path/to/project --package-prefix com.company --risk-threshold medium"
+                "  state-scan /path/to/project --package-prefix com.company --risk-threshold medium",
+                "  state-scan /path/to/project --include-root com.company.shared,com.company.common"
         }
 )
 public class StateScanCli implements Callable<Integer> {
@@ -105,6 +106,15 @@ public class StateScanCli implements Callable<Integer> {
             split = ","
     )
     private List<String> excludePatterns;
+
+    @Option(
+            names = {"--include-root"},
+            description = "Additional package prefix(es) to treat as root classes for call tree analysis. " +
+                    "Use for first-party JARs that should be analyzed as project code. " +
+                    "These are ADDED to auto-detected/specified prefixes (e.g., com.company.shared,com.company.common).",
+            split = ","
+    )
+    private List<String> includeRootPrefixes;
 
     @Option(
             names = {"-v", "--verbose"},
@@ -182,13 +192,26 @@ public class StateScanCli implements Callable<Integer> {
 
             List<String> effectivePrefixes;
             if (packagePrefixes != null && !packagePrefixes.isEmpty()) {
-                effectivePrefixes = packagePrefixes;
+                effectivePrefixes = new ArrayList<>(packagePrefixes);
             } else if (classpath.detectedPackagePrefix() != null && !classpath.detectedPackagePrefix().isEmpty()) {
-                effectivePrefixes = List.of(classpath.detectedPackagePrefix());
+                effectivePrefixes = new ArrayList<>(List.of(classpath.detectedPackagePrefix()));
             } else {
-                effectivePrefixes = List.of();
+                effectivePrefixes = new ArrayList<>();
             }
+
+            // Merge additional root prefixes (for first-party JARs)
+            if (includeRootPrefixes != null && !includeRootPrefixes.isEmpty()) {
+                for (String prefix : includeRootPrefixes) {
+                    if (!effectivePrefixes.contains(prefix)) {
+                        effectivePrefixes.add(prefix);
+                    }
+                }
+            }
+
             log("  Package prefix(es): " + (effectivePrefixes.isEmpty() ? "(none detected)" : String.join(", ", effectivePrefixes)));
+            if (includeRootPrefixes != null && !includeRootPrefixes.isEmpty()) {
+                log("  Additional root prefix(es): " + String.join(", ", includeRootPrefixes));
+            }
             log("  Found " + classpath.dependencyJars().size() + " dependency JARs");
 
             // Step 2: Scan bytecode
