@@ -14,6 +14,7 @@ public class ConsoleOutput {
 
     private boolean showEmptyMethods = false;
     private boolean showOnlyPublicMethods = false;
+    private boolean useColor = true;
     private ScanResult scanResult;
     private Map<String, Set<String>> implementationMap;
 
@@ -24,6 +25,11 @@ public class ConsoleOutput {
 
     public ConsoleOutput showOnlyPublicMethods(boolean show) {
         this.showOnlyPublicMethods = show;
+        return this;
+    }
+
+    public ConsoleOutput useColor(boolean use) {
+        this.useColor = use;
         return this;
     }
 

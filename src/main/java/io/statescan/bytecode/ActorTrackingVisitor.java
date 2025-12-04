@@ -1,7 +1,6 @@
 package io.statescan.bytecode;
 
-import io.statescan.model.Actor;
-import io.statescan.model.ActorType;
+import io.statescan.model.*;
 import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
@@ -31,8 +30,39 @@ public class ActorTrackingVisitor extends MethodVisitor {
     private final int parameterCount;
 
     // Stack simulation - tracks what was most recently pushed
-    // Simplified: only track top of stack for method receiver detection
-    private record StackEntry(ActorType type, String name, String typeFqn) {}
+    // Enhanced to support argument tracking for callgraph
+    private record StackEntry(ActorType type, String name, String typeFqn, Object literalValue, boolean isThis) {
+        // Convenience constructors
+        static StackEntry actor(ActorType type, String name, String typeFqn) {
+            return new StackEntry(type, name, typeFqn, null, false);
+        }
+
+        static StackEntry computed(String typeFqn) {
+            return new StackEntry(null, null, typeFqn, null, false);
+        }
+
+        static StackEntry literal(Object value, String typeFqn) {
+            return new StackEntry(null, null, typeFqn, value, false);
+        }
+
+        static StackEntry thisRef(String typeFqn) {
+            return new StackEntry(null, "this", typeFqn, null, true);
+        }
+
+        /**
+         * Convert this stack entry to an ArgumentRef.
+         */
+        ArgumentRef toArgumentRef() {
+            if (isThis) {
+                return new ArgumentRef.ThisArg(typeFqn);
+            } else if (literalValue != null) {
+                return new ArgumentRef.LiteralArg(literalValue, typeFqn);
+            } else if (type != null) {
+                return new ArgumentRef.ActorArg(type, name, typeFqn);
+            }
+            return new ArgumentRef.ComputedArg(typeFqn);
+        }
+    }
     private Deque<StackEntry> stack = new ArrayDeque<>();
 
     // Local variable tracking
@@ -45,6 +75,10 @@ public class ActorTrackingVisitor extends MethodVisitor {
     // Results: accumulate method calls per actor
     private record ActorKey(ActorType type, String name, String typeFqn) {}
     private Map<ActorKey, Set<String>> actorMethodCalls = new LinkedHashMap<>();
+
+    // Invocation tracking for callgraph
+    private final List<MethodInvocation> invocations = new ArrayList<>();
+    private int bytecodeOffset = 0;
 
     /**
      * Creates an ActorTrackingVisitor for analyzing a method.
@@ -85,11 +119,11 @@ public class ActorTrackingVisitor extends MethodVisitor {
         if (opcode == Opcodes.GETFIELD) {
             // Instance field access - pop 'this' from stack, push field value
             stack.pollFirst(); // consume 'this' reference
-            stack.push(new StackEntry(ActorType.FIELD, name, typeFqn));
+            stack.push(StackEntry.actor(ActorType.FIELD, name, typeFqn));
         } else if (opcode == Opcodes.GETSTATIC) {
             // Static field access - push field value
             // For static fields, the "actor" is the field itself
-            stack.push(new StackEntry(ActorType.FIELD, ownerFqn + "." + name, typeFqn));
+            stack.push(StackEntry.actor(ActorType.FIELD, ownerFqn + "." + name, typeFqn));
         } else if (opcode == Opcodes.PUTFIELD || opcode == Opcodes.PUTSTATIC) {
             // Field assignment - consume from stack
             stack.pollFirst(); // value being stored
@@ -105,8 +139,8 @@ public class ActorTrackingVisitor extends MethodVisitor {
     public void visitVarInsn(int opcode, int varIndex) {
         if (opcode == Opcodes.ALOAD) {
             if (varIndex == 0 && !isStaticMethod) {
-                // Loading 'this' - usually followed by GETFIELD
-                stack.push(new StackEntry(null, "this", ownerClass));
+                // Loading 'this' - track as ThisArg for callgraph
+                stack.push(StackEntry.thisRef(ownerClass));
             } else {
                 // Loading a parameter or local variable
                 int effectiveIndex = isStaticMethod ? varIndex : varIndex - 1;
@@ -115,12 +149,12 @@ public class ActorTrackingVisitor extends MethodVisitor {
                     // It's a parameter
                     String paramName = localVarNames.getOrDefault(varIndex, "param" + effectiveIndex);
                     String paramType = localVarTypes.getOrDefault(varIndex, "java.lang.Object");
-                    stack.push(new StackEntry(ActorType.PARAMETER, paramName, paramType));
+                    stack.push(StackEntry.actor(ActorType.PARAMETER, paramName, paramType));
                 } else {
                     // It's a local variable
                     String localName = localVarNames.getOrDefault(varIndex, "local" + varIndex);
                     String localType = localVarTypes.getOrDefault(varIndex, "java.lang.Object");
-                    stack.push(new StackEntry(ActorType.LOCAL, localName, localType));
+                    stack.push(StackEntry.actor(ActorType.LOCAL, localName, localType));
                 }
             }
         } else if (opcode == Opcodes.ASTORE) {
@@ -138,7 +172,7 @@ public class ActorTrackingVisitor extends MethodVisitor {
             }
         } else if (opcode >= Opcodes.ILOAD && opcode <= Opcodes.DLOAD) {
             // Primitive load - push a placeholder (primitives don't receive method calls)
-            stack.push(new StackEntry(null, null, "primitive"));
+            stack.push(StackEntry.computed("primitive"));
         } else if (opcode >= Opcodes.ISTORE && opcode <= Opcodes.DSTORE) {
             // Primitive store - pop
             stack.pollFirst();
@@ -159,8 +193,17 @@ public class ActorTrackingVisitor extends MethodVisitor {
             StackEntry entry = stack.pollFirst();
             if (entry != null) {
                 String newType = DescriptorParser.toFqn(type);
-                stack.push(new StackEntry(entry.type(), entry.name(), newType));
+                stack.push(new StackEntry(entry.type(), entry.name(), newType, entry.literalValue(), entry.isThis()));
             }
+        } else if (opcode == Opcodes.INSTANCEOF) {
+            // INSTANCEOF - pop ref, push int
+            stack.pollFirst();
+            stack.push(StackEntry.computed("int"));
+        } else if (opcode == Opcodes.ANEWARRAY) {
+            // ANEWARRAY - pop size, push array
+            stack.pollFirst();
+            String arrayType = DescriptorParser.toFqn(type) + "[]";
+            stack.push(StackEntry.computed(arrayType));
         }
 
         super.visitTypeInsn(opcode, type);
@@ -171,15 +214,16 @@ public class ActorTrackingVisitor extends MethodVisitor {
         if (opcode == Opcodes.DUP && pendingNewType != null) {
             // DUP after NEW - push the new object onto stack
             String simpleName = DescriptorParser.simpleName(pendingNewType);
-            stack.push(new StackEntry(ActorType.NEW_OBJECT, simpleName, pendingNewType));
+            stack.push(StackEntry.actor(ActorType.NEW_OBJECT, simpleName, pendingNewType));
         } else if (opcode >= Opcodes.ICONST_M1 && opcode <= Opcodes.DCONST_1) {
-            // Constant push
-            stack.push(new StackEntry(null, null, "primitive"));
+            // Constant push - track the literal value
+            Object value = getConstantValue(opcode);
+            stack.push(StackEntry.literal(value, "primitive"));
         } else if (opcode == Opcodes.ACONST_NULL) {
-            stack.push(new StackEntry(null, null, "null"));
+            stack.push(StackEntry.literal(null, "null"));
         } else if (opcode == Opcodes.ARRAYLENGTH) {
             stack.pollFirst(); // consume array ref
-            stack.push(new StackEntry(null, null, "int"));
+            stack.push(StackEntry.computed("int"));
         } else if (opcode == Opcodes.POP) {
             stack.pollFirst();
         } else if (opcode == Opcodes.POP2) {
@@ -188,8 +232,32 @@ public class ActorTrackingVisitor extends MethodVisitor {
         } else if (opcode == Opcodes.DUP) {
             StackEntry top = stack.peekFirst();
             if (top != null) {
-                stack.push(new StackEntry(top.type(), top.name(), top.typeFqn()));
+                stack.push(new StackEntry(top.type(), top.name(), top.typeFqn(), top.literalValue(), top.isThis()));
             }
+        } else if (opcode == Opcodes.DUP_X1) {
+            // DUP_X1: ..., v2, v1 -> ..., v1, v2, v1
+            StackEntry v1 = stack.pollFirst();
+            StackEntry v2 = stack.pollFirst();
+            if (v1 != null) stack.push(v1);
+            if (v2 != null) stack.push(v2);
+            if (v1 != null) stack.push(v1);
+        } else if (opcode == Opcodes.DUP_X2) {
+            // DUP_X2: ..., v3, v2, v1 -> ..., v1, v3, v2, v1
+            StackEntry v1 = stack.pollFirst();
+            StackEntry v2 = stack.pollFirst();
+            StackEntry v3 = stack.pollFirst();
+            if (v1 != null) stack.push(v1);
+            if (v3 != null) stack.push(v3);
+            if (v2 != null) stack.push(v2);
+            if (v1 != null) stack.push(v1);
+        } else if (opcode == Opcodes.DUP2) {
+            // DUP2: ..., v2, v1 -> ..., v2, v1, v2, v1
+            StackEntry v1 = stack.peekFirst();
+            Iterator<StackEntry> it = stack.iterator();
+            if (it.hasNext()) it.next();
+            StackEntry v2 = it.hasNext() ? it.next() : null;
+            if (v2 != null) stack.push(new StackEntry(v2.type(), v2.name(), v2.typeFqn(), v2.literalValue(), v2.isThis()));
+            if (v1 != null) stack.push(new StackEntry(v1.type(), v1.name(), v1.typeFqn(), v1.literalValue(), v1.isThis()));
         } else if (opcode == Opcodes.SWAP) {
             StackEntry a = stack.pollFirst();
             StackEntry b = stack.pollFirst();
@@ -199,43 +267,92 @@ public class ActorTrackingVisitor extends MethodVisitor {
             // Binary operations - pop 2, push 1
             stack.pollFirst();
             stack.pollFirst();
-            stack.push(new StackEntry(null, null, "primitive"));
+            stack.push(StackEntry.computed("primitive"));
         } else if (opcode >= Opcodes.INEG && opcode <= Opcodes.DNEG) {
             // Unary negation - pop 1, push 1
             stack.pollFirst();
-            stack.push(new StackEntry(null, null, "primitive"));
+            stack.push(StackEntry.computed("primitive"));
         } else if (opcode >= Opcodes.I2L && opcode <= Opcodes.I2S) {
             // Type conversions - pop 1, push 1
             stack.pollFirst();
-            stack.push(new StackEntry(null, null, "primitive"));
+            stack.push(StackEntry.computed("primitive"));
         } else if (opcode >= Opcodes.LCMP && opcode <= Opcodes.DCMPG) {
             // Comparisons - pop 2, push 1
             stack.pollFirst();
             stack.pollFirst();
-            stack.push(new StackEntry(null, null, "int"));
+            stack.push(StackEntry.computed("int"));
         } else if (opcode == Opcodes.ATHROW || opcode >= Opcodes.IRETURN && opcode <= Opcodes.RETURN) {
             // Return or throw - clear stack
             stack.clear();
+        } else if (opcode >= Opcodes.IALOAD && opcode <= Opcodes.SALOAD) {
+            // Array load - pop index and array, push element
+            stack.pollFirst(); // index
+            stack.pollFirst(); // array
+            stack.push(StackEntry.computed("element"));
+        } else if (opcode >= Opcodes.IASTORE && opcode <= Opcodes.SASTORE) {
+            // Array store - pop value, index, array
+            stack.pollFirst();
+            stack.pollFirst();
+            stack.pollFirst();
         }
 
         super.visitInsn(opcode);
     }
 
+    private Object getConstantValue(int opcode) {
+        if (opcode == Opcodes.ICONST_M1) return -1;
+        if (opcode == Opcodes.ICONST_0) return 0;
+        if (opcode == Opcodes.ICONST_1) return 1;
+        if (opcode == Opcodes.ICONST_2) return 2;
+        if (opcode == Opcodes.ICONST_3) return 3;
+        if (opcode == Opcodes.ICONST_4) return 4;
+        if (opcode == Opcodes.ICONST_5) return 5;
+        if (opcode == Opcodes.LCONST_0) return 0L;
+        if (opcode == Opcodes.LCONST_1) return 1L;
+        if (opcode == Opcodes.FCONST_0) return 0.0f;
+        if (opcode == Opcodes.FCONST_1) return 1.0f;
+        if (opcode == Opcodes.FCONST_2) return 2.0f;
+        if (opcode == Opcodes.DCONST_0) return 0.0d;
+        if (opcode == Opcodes.DCONST_1) return 1.0d;
+        return null;
+    }
+
     @Override
     public void visitMethodInsn(int opcode, String owner, String name, String descriptor, boolean isInterface) {
         String ownerFqn = DescriptorParser.toFqn(owner);
-        List<String> params = DescriptorParser.parseParameterTypes(descriptor);
+        List<String> paramTypes = DescriptorParser.parseParameterTypes(descriptor);
         String returnType = DescriptorParser.parseReturnType(descriptor);
 
-        // Pop arguments from stack
-        for (int i = 0; i < params.size(); i++) {
-            stack.pollFirst();
+        // Determine invoke type
+        InvokeType invokeType;
+        if (opcode == Opcodes.INVOKESTATIC) {
+            invokeType = InvokeType.STATIC;
+        } else if (opcode == Opcodes.INVOKEINTERFACE) {
+            invokeType = InvokeType.INTERFACE;
+        } else if (opcode == Opcodes.INVOKESPECIAL) {
+            invokeType = InvokeType.SPECIAL;
+        } else {
+            invokeType = InvokeType.VIRTUAL;
         }
+
+        // Pop arguments from stack in REVERSE order (last arg is on top)
+        List<ArgumentRef> arguments = new ArrayList<>();
+        for (int i = paramTypes.size() - 1; i >= 0; i--) {
+            StackEntry argEntry = stack.pollFirst();
+            if (argEntry != null) {
+                arguments.add(0, argEntry.toArgumentRef());  // Insert at front
+            } else {
+                arguments.add(0, new ArgumentRef.ComputedArg(paramTypes.get(i)));
+            }
+        }
+
+        ArgumentRef receiver = null;
 
         if (opcode == Opcodes.INVOKESTATIC) {
             // Static method call - no receiver on stack
             String simpleName = DescriptorParser.simpleName(ownerFqn);
             recordActorMethodCall(ActorType.STATIC_CLASS, simpleName, ownerFqn, name);
+            // receiver stays null for static calls
 
         } else if (opcode == Opcodes.INVOKESPECIAL && "<init>".equals(name)) {
             // Constructor call
@@ -243,48 +360,68 @@ public class ActorTrackingVisitor extends MethodVisitor {
                 // This is a constructor call on a NEW object
                 String simpleName = DescriptorParser.simpleName(pendingNewType);
                 recordActorMethodCall(ActorType.NEW_OBJECT, simpleName, pendingNewType, "<init>");
+                receiver = new ArgumentRef.ActorArg(ActorType.NEW_OBJECT, simpleName, pendingNewType);
                 // Push the constructed object as result
-                stack.push(new StackEntry(ActorType.NEW_OBJECT, simpleName, pendingNewType));
+                stack.push(StackEntry.actor(ActorType.NEW_OBJECT, simpleName, pendingNewType));
+                // Use pendingNewType as target for the invocation
+                ownerFqn = pendingNewType;
                 pendingNewType = null;
             } else {
                 // This is a super() or this() call - pop 'this'
-                stack.pollFirst();
+                StackEntry thisEntry = stack.pollFirst();
+                if (thisEntry != null) {
+                    receiver = thisEntry.toArgumentRef();
+                }
             }
 
         } else {
             // INVOKEVIRTUAL, INVOKEINTERFACE, or non-init INVOKESPECIAL
             // Pop the receiver and record the method call
-            StackEntry receiver = stack.pollFirst();
+            StackEntry receiverEntry = stack.pollFirst();
 
-            if (receiver != null && receiver.type() != null) {
-                recordActorMethodCall(receiver.type(), receiver.name(), receiver.typeFqn(), name);
+            if (receiverEntry != null) {
+                receiver = receiverEntry.toArgumentRef();
+                if (receiverEntry.type() != null) {
+                    recordActorMethodCall(receiverEntry.type(), receiverEntry.name(), receiverEntry.typeFqn(), name);
+                }
             }
 
             // Push the return value if non-void
             if (!"void".equals(returnType)) {
-                stack.push(new StackEntry(null, null, returnType));
+                stack.push(StackEntry.computed(returnType));
             }
         }
+
+        // Record the full invocation for callgraph
+        invocations.add(new MethodInvocation(
+            ownerFqn,
+            name,
+            descriptor,
+            invokeType,
+            receiver,
+            arguments,
+            bytecodeOffset++
+        ));
 
         super.visitMethodInsn(opcode, owner, name, descriptor, isInterface);
     }
 
     @Override
     public void visitLdcInsn(Object value) {
-        if (value instanceof String) {
-            stack.push(new StackEntry(null, null, "java.lang.String"));
-        } else if (value instanceof Integer) {
-            stack.push(new StackEntry(null, null, "int"));
-        } else if (value instanceof Long) {
-            stack.push(new StackEntry(null, null, "long"));
-        } else if (value instanceof Float) {
-            stack.push(new StackEntry(null, null, "float"));
-        } else if (value instanceof Double) {
-            stack.push(new StackEntry(null, null, "double"));
-        } else if (value instanceof org.objectweb.asm.Type) {
-            stack.push(new StackEntry(null, null, "java.lang.Class"));
+        if (value instanceof String s) {
+            stack.push(StackEntry.literal(s, "java.lang.String"));
+        } else if (value instanceof Integer i) {
+            stack.push(StackEntry.literal(i, "int"));
+        } else if (value instanceof Long l) {
+            stack.push(StackEntry.literal(l, "long"));
+        } else if (value instanceof Float f) {
+            stack.push(StackEntry.literal(f, "float"));
+        } else if (value instanceof Double d) {
+            stack.push(StackEntry.literal(d, "double"));
+        } else if (value instanceof org.objectweb.asm.Type t) {
+            stack.push(StackEntry.literal(t.getClassName(), "java.lang.Class"));
         } else {
-            stack.push(new StackEntry(null, null, "unknown"));
+            stack.push(StackEntry.computed("unknown"));
         }
 
         super.visitLdcInsn(value);
@@ -304,10 +441,10 @@ public class ActorTrackingVisitor extends MethodVisitor {
     @Override
     public void visitIntInsn(int opcode, int operand) {
         if (opcode == Opcodes.BIPUSH || opcode == Opcodes.SIPUSH) {
-            stack.push(new StackEntry(null, null, "int"));
+            stack.push(StackEntry.literal(operand, "int"));
         } else if (opcode == Opcodes.NEWARRAY) {
             stack.pollFirst(); // size
-            stack.push(new StackEntry(null, null, "array"));
+            stack.push(StackEntry.computed("array"));
         }
         super.visitIntInsn(opcode, operand);
     }
@@ -317,7 +454,7 @@ public class ActorTrackingVisitor extends MethodVisitor {
         for (int i = 0; i < numDimensions; i++) {
             stack.pollFirst(); // dimension sizes
         }
-        stack.push(new StackEntry(null, null, DescriptorParser.parseFieldType(descriptor)));
+        stack.push(StackEntry.computed(DescriptorParser.parseFieldType(descriptor)));
         super.visitMultiANewArrayInsn(descriptor, numDimensions);
     }
 
@@ -357,5 +494,13 @@ public class ActorTrackingVisitor extends MethodVisitor {
             actors.add(new Actor(key.type(), key.name(), key.typeFqn(), entry.getValue()));
         }
         return actors;
+    }
+
+    /**
+     * Returns the list of method invocations found in this method.
+     * Used for building the callgraph.
+     */
+    public List<MethodInvocation> getInvocations() {
+        return List.copyOf(invocations);
     }
 }

@@ -1,0 +1,275 @@
+package io.statescan.output;
+
+import io.statescan.bytecode.DescriptorParser;
+import io.statescan.model.*;
+
+import java.io.PrintStream;
+import java.util.*;
+import java.util.stream.Collectors;
+
+/**
+ * Outputs callgraph information in various formats.
+ */
+public class CallGraphOutput {
+    private final CallGraph callGraph;
+    private final ScanResult scanResult;
+    private final PrintStream out;
+    private final boolean useColor;
+
+    // ANSI color codes
+    private static final String RESET = "\u001B[0m";
+    private static final String CYAN = "\u001B[36m";
+    private static final String GREEN = "\u001B[32m";
+    private static final String YELLOW = "\u001B[33m";
+    private static final String MAGENTA = "\u001B[35m";
+    private static final String DIM = "\u001B[2m";
+
+    public CallGraphOutput(CallGraph callGraph, ScanResult scanResult) {
+        this(callGraph, scanResult, System.out, true);
+    }
+
+    public CallGraphOutput(CallGraph callGraph, ScanResult scanResult, PrintStream out, boolean useColor) {
+        this.callGraph = callGraph;
+        this.scanResult = scanResult;
+        this.out = out;
+        this.useColor = useColor;
+    }
+
+    /**
+     * Print callgraph summary statistics.
+     */
+    public void printSummary() {
+        out.println("=== CALLGRAPH SUMMARY ===");
+        out.println("Total edges: " + callGraph.edgeCount());
+        out.println("Total methods: " + callGraph.methodCount());
+        out.println("Root methods (entry points): " + callGraph.rootMethods().size());
+        out.println("Leaf methods (terminal points): " + callGraph.leafMethods().size());
+        out.println("Isolated methods (both root and leaf): " + callGraph.getIsolatedMethods().size());
+        out.println();
+    }
+
+    /**
+     * Print root methods (entry points).
+     */
+    public void printRootMethods() {
+        out.println("=== ROOT METHODS (Entry Points) ===");
+        List<MethodRef> sorted = callGraph.rootMethods().stream()
+            .sorted(Comparator.comparing(MethodRef::key))
+            .collect(Collectors.toList());
+
+        for (MethodRef method : sorted) {
+            out.println(formatMethodRef(method));
+        }
+        out.println();
+    }
+
+    /**
+     * Print leaf methods (terminal points).
+     */
+    public void printLeafMethods() {
+        out.println("=== LEAF METHODS (Terminal Points) ===");
+        List<MethodRef> sorted = callGraph.leafMethods().stream()
+            .sorted(Comparator.comparing(MethodRef::key))
+            .collect(Collectors.toList());
+
+        for (MethodRef method : sorted) {
+            out.println(formatMethodRef(method));
+        }
+        out.println();
+    }
+
+    /**
+     * Print callgraph edges grouped by caller.
+     */
+    public void printEdges() {
+        out.println("=== CALLGRAPH EDGES ===");
+
+        // Group by class for better organization
+        Map<String, List<CallEdge>> edgesByClass = callGraph.allEdges()
+            .collect(Collectors.groupingBy(
+                e -> e.caller().classFqn(),
+                TreeMap::new,
+                Collectors.toList()
+            ));
+
+        for (Map.Entry<String, List<CallEdge>> classEntry : edgesByClass.entrySet()) {
+            String classFqn = classEntry.getKey();
+            out.println(color(CYAN, classFqn) + ":");
+
+            // Group by method within class
+            Map<String, List<CallEdge>> edgesByMethod = classEntry.getValue().stream()
+                .collect(Collectors.groupingBy(
+                    e -> e.caller().methodName() + e.caller().descriptor(),
+                    LinkedHashMap::new,
+                    Collectors.toList()
+                ));
+
+            for (Map.Entry<String, List<CallEdge>> methodEntry : edgesByMethod.entrySet()) {
+                String methodKey = methodEntry.getKey();
+                List<CallEdge> edges = methodEntry.getValue();
+
+                out.println("  " + formatMethodName(methodKey) + ":");
+
+                for (CallEdge edge : edges) {
+                    out.println("    " + formatCallEdge(edge));
+                }
+            }
+        }
+        out.println();
+    }
+
+    /**
+     * Print type narrowings.
+     */
+    public void printTypeNarrowings() {
+        if (callGraph.typeContexts().isEmpty()) {
+            out.println("=== TYPE NARROWINGS ===");
+            out.println("(none detected)");
+            out.println();
+            return;
+        }
+
+        out.println("=== TYPE NARROWINGS ===");
+
+        for (Map.Entry<String, List<TypeContext>> entry : callGraph.typeContexts().entrySet()) {
+            String methodKey = entry.getKey();
+            List<TypeContext> contexts = entry.getValue();
+
+            out.println(color(CYAN, methodKey) + ":");
+
+            for (TypeContext ctx : contexts) {
+                String callPath = String.join(" -> ", ctx.callPath());
+                out.println("  via " + color(DIM, callPath) + ":");
+
+                for (Map.Entry<Integer, Set<String>> narrowing : ctx.parameterTypes().entrySet()) {
+                    int paramIdx = narrowing.getKey();
+                    Set<String> types = narrowing.getValue();
+                    String typeStr = types.stream()
+                        .map(DescriptorParser::simpleName)
+                        .collect(Collectors.joining(", "));
+                    out.println("    param[" + paramIdx + "] narrowed to: " + color(GREEN, typeStr));
+                }
+            }
+        }
+        out.println();
+    }
+
+    /**
+     * Print parameter flow for a specific method.
+     */
+    public void printParameterFlow(MethodRef method) {
+        Set<CallEdge> callers = callGraph.getCallers(method);
+        if (callers.isEmpty()) {
+            out.println("No incoming calls to " + method.key());
+            return;
+        }
+
+        out.println("Parameter flow into " + color(CYAN, method.key()) + ":");
+
+        for (CallEdge edge : callers) {
+            out.println("  from " + color(DIM, edge.caller().key()) + ":");
+            for (Map.Entry<Integer, ArgumentRef> flow : edge.parameterFlow().entrySet()) {
+                out.println("    param[" + flow.getKey() + "] <- " + formatArgRef(flow.getValue()));
+            }
+        }
+    }
+
+    /**
+     * Print full callgraph output.
+     */
+    public void printFull() {
+        printSummary();
+        printRootMethods();
+        printLeafMethods();
+        printEdges();
+        printTypeNarrowings();
+    }
+
+    // Formatting helpers
+
+    private String formatMethodRef(MethodRef ref) {
+        String simpleName = DescriptorParser.simpleName(ref.classFqn());
+        return color(CYAN, simpleName) + "." + color(GREEN, ref.methodName()) +
+               color(DIM, formatDescriptor(ref.descriptor()));
+    }
+
+    private String formatMethodName(String methodKey) {
+        int parenIdx = methodKey.indexOf('(');
+        if (parenIdx > 0) {
+            String name = methodKey.substring(0, parenIdx);
+            String desc = methodKey.substring(parenIdx);
+            return color(GREEN, name) + color(DIM, formatDescriptor(desc));
+        }
+        return color(GREEN, methodKey);
+    }
+
+    private String formatCallEdge(CallEdge edge) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("-> ");
+        sb.append(color(CYAN, DescriptorParser.simpleName(edge.callee().classFqn())));
+        sb.append(".");
+        sb.append(color(GREEN, edge.callee().methodName()));
+        sb.append(color(DIM, formatDescriptor(edge.callee().descriptor())));
+
+        // Show parameter flow summary
+        if (!edge.parameterFlow().isEmpty()) {
+            sb.append(" [");
+            List<String> flows = new ArrayList<>();
+            for (Map.Entry<Integer, ArgumentRef> flow : edge.parameterFlow().entrySet()) {
+                flows.add(shortArgRef(flow.getValue()));
+            }
+            sb.append(String.join(", ", flows));
+            sb.append("]");
+        }
+
+        return sb.toString();
+    }
+
+    private String formatArgRef(ArgumentRef ref) {
+        if (ref instanceof ArgumentRef.ActorArg a) {
+            return color(YELLOW, a.actorType().toString()) + " " + a.name() +
+                   " (" + color(DIM, DescriptorParser.simpleName(a.typeFqn())) + ")";
+        } else if (ref instanceof ArgumentRef.LiteralArg l) {
+            return color(MAGENTA, "literal") + " " + l.value() +
+                   " (" + color(DIM, l.typeFqn()) + ")";
+        } else if (ref instanceof ArgumentRef.ComputedArg c) {
+            return color(DIM, "computed") + " (" + DescriptorParser.simpleName(c.typeFqn()) + ")";
+        } else if (ref instanceof ArgumentRef.ThisArg t) {
+            return color(YELLOW, "this") + " (" + color(DIM, DescriptorParser.simpleName(t.typeFqn())) + ")";
+        }
+        return ref.toString();
+    }
+
+    private String shortArgRef(ArgumentRef ref) {
+        if (ref instanceof ArgumentRef.ActorArg a) {
+            return a.actorType().toString().charAt(0) + ":" + a.name();
+        } else if (ref instanceof ArgumentRef.LiteralArg l) {
+            return "L:" + l.value();
+        } else if (ref instanceof ArgumentRef.ComputedArg) {
+            return "?";
+        } else if (ref instanceof ArgumentRef.ThisArg) {
+            return "this";
+        }
+        return "?";
+    }
+
+    private String formatDescriptor(String descriptor) {
+        // Simplify descriptor for display
+        if (descriptor == null || descriptor.isEmpty()) {
+            return "";
+        }
+        // For now, just show simplified parameter count
+        List<String> params = DescriptorParser.parseParameterTypes(descriptor);
+        if (params.isEmpty()) {
+            return "()";
+        }
+        return "(" + params.size() + " params)";
+    }
+
+    private String color(String code, String text) {
+        if (useColor) {
+            return code + text + RESET;
+        }
+        return text;
+    }
+}

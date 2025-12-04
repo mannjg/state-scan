@@ -1,7 +1,10 @@
 package io.statescan;
 
+import io.statescan.analysis.CallGraphBuilder;
 import io.statescan.bytecode.ProjectScanner;
+import io.statescan.model.CallGraph;
 import io.statescan.model.ScanResult;
+import io.statescan.output.CallGraphOutput;
 import io.statescan.output.ConsoleOutput;
 import picocli.CommandLine;
 import picocli.CommandLine.*;
@@ -9,6 +12,7 @@ import picocli.CommandLine.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.stream.Collectors;
@@ -52,6 +56,14 @@ public class ActorScanCli implements Callable<Integer> {
     @Option(names = {"--root-packages"},
             description = "Additional package prefixes to scan from transitive dependencies (comma-separated, requires --maven)")
     private String rootPackages;
+
+    @Option(names = {"--callgraph"},
+            description = "Build and display callgraph with parameter flow")
+    private boolean showCallgraph = false;
+
+    @Option(names = {"--no-color"},
+            description = "Disable colored output")
+    private boolean noColor = false;
 
     @Override
     public Integer call() throws Exception {
@@ -106,11 +118,33 @@ public class ActorScanCli implements Callable<Integer> {
         }
 
         // Output results
-        ConsoleOutput output = new ConsoleOutput()
-            .showEmptyMethods(showEmpty)
-            .showOnlyPublicMethods(publicOnly);
+        boolean useColor = !noColor;
 
-        output.print(result);
+        if (showCallgraph) {
+            // Build callgraph
+            Set<String> callgraphPackages = new HashSet<>();
+            if (!packages.isEmpty()) {
+                callgraphPackages.addAll(packages);
+            }
+            if (!rootPkgs.isEmpty()) {
+                callgraphPackages.addAll(rootPkgs);
+            }
+
+            CallGraphBuilder builder = new CallGraphBuilder(result, callgraphPackages);
+            CallGraph callGraph = builder.build();
+
+            // Output callgraph
+            CallGraphOutput cgOutput = new CallGraphOutput(callGraph, result, System.out, useColor);
+            cgOutput.printFull();
+        } else {
+            // Standard actor output
+            ConsoleOutput output = new ConsoleOutput()
+                .showEmptyMethods(showEmpty)
+                .showOnlyPublicMethods(publicOnly)
+                .useColor(useColor);
+
+            output.print(result);
+        }
 
         return 0;
     }

@@ -75,8 +75,8 @@ public class ClassScanner extends ClassVisitor {
 
         // Skip abstract and native methods - they have no body to analyze
         if (isAbstract || isNative) {
-            // Still record the method but with empty actors
-            MethodInfo methodInfo = new MethodInfo(name, descriptor, java.util.Set.of(), isStatic, isPublic);
+            // Still record the method but with empty actors and invocations
+            MethodInfo methodInfo = new MethodInfo(name, descriptor, java.util.Set.of(), java.util.List.of(), isStatic, isPublic);
             methods.put(name + descriptor, methodInfo);
             return super.visitMethod(access, name, descriptor, signature, exceptions);
         }
@@ -103,6 +103,7 @@ public class ClassScanner extends ClassVisitor {
                     methodName,
                     methodDescriptor,
                     actorVisitor.getActors(),
+                    actorVisitor.getInvocations(),
                     methodIsStatic,
                     methodIsPublic
                 );
