@@ -71,33 +71,82 @@ public class MavenClasspathResolver implements ClasspathResolver {
 
     /**
      * Detects the package prefix from the pom.xml groupId.
+     * <p>
+     * Looks for the project-level groupId, avoiding:
+     * - Parent block groupIds
+     * - Dependency groupIds
+     * - Plugin groupIds
      */
     private String detectPackagePrefix(Path pomPath) throws IOException {
         String content = Files.readString(pomPath);
 
-        // Try to find the project's groupId (not parent's)
-        // Look for groupId that's a direct child of project, not in parent block
-        int parentStart = content.indexOf("<parent>");
-        int parentEnd = content.indexOf("</parent>");
-
-        String searchContent = content;
-        if (parentStart >= 0 && parentEnd > parentStart) {
-            // Remove parent block to avoid picking up parent's groupId
-            searchContent = content.substring(0, parentStart) + content.substring(parentEnd + 9);
+        // Strategy 1: Find groupId in the "project header" section
+        // (between </parent> or start and <dependencies>/<dependencyManagement>/<build>/<modules>/<profiles>)
+        String projectHeader = extractProjectHeader(content);
+        Matcher matcher = GROUP_ID_PATTERN.matcher(projectHeader);
+        if (matcher.find()) {
+            String groupId = matcher.group(1).trim();
+            // Skip Maven property references like ${project.groupId}
+            if (!groupId.startsWith("${")) {
+                return groupId;
+            }
         }
 
-        Matcher matcher = GROUP_ID_PATTERN.matcher(searchContent);
-        if (matcher.find()) {
-            return matcher.group(1).trim();
-        }
-
-        // Fall back to searching in full content (might get parent's groupId)
-        matcher = GROUP_ID_PATTERN.matcher(content);
-        if (matcher.find()) {
-            return matcher.group(1).trim();
+        // Strategy 2: Fall back to parent's groupId (many submodules inherit it)
+        String parentGroupId = extractParentGroupId(content);
+        if (parentGroupId != null && !parentGroupId.isEmpty()) {
+            return parentGroupId;
         }
 
         return "";
+    }
+
+    /**
+     * Extracts the "project header" section of a pom.xml - the part that contains
+     * project-level elements like groupId, artifactId, version, packaging, name, etc.
+     * This excludes dependencies, plugins, profiles, and other nested sections.
+     */
+    private String extractProjectHeader(String content) {
+        // Find where the header ends (any of these elements start the "body")
+        String[] bodyElements = {
+            "<dependencies>", "<dependencyManagement>", "<build>", 
+            "<modules>", "<profiles>", "<properties>", "<reporting>"
+        };
+        
+        int headerEnd = content.length();
+        for (String element : bodyElements) {
+            int idx = content.indexOf(element);
+            if (idx >= 0 && idx < headerEnd) {
+                headerEnd = idx;
+            }
+        }
+        
+        String header = content.substring(0, headerEnd);
+        
+        // Remove the parent block from the header
+        int parentStart = header.indexOf("<parent>");
+        int parentEnd = header.indexOf("</parent>");
+        if (parentStart >= 0 && parentEnd > parentStart) {
+            header = header.substring(0, parentStart) + header.substring(parentEnd + 9);
+        }
+        
+        return header;
+    }
+
+    /**
+     * Extracts the groupId from the parent block.
+     */
+    private String extractParentGroupId(String content) {
+        int parentStart = content.indexOf("<parent>");
+        int parentEnd = content.indexOf("</parent>");
+        if (parentStart >= 0 && parentEnd > parentStart) {
+            String parentBlock = content.substring(parentStart, parentEnd);
+            Matcher matcher = GROUP_ID_PATTERN.matcher(parentBlock);
+            if (matcher.find()) {
+                return matcher.group(1).trim();
+            }
+        }
+        return null;
     }
 
     /**
