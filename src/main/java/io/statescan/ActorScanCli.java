@@ -66,14 +66,6 @@ public class ActorScanCli implements Callable<Integer> {
         ProjectScanner scanner = new ProjectScanner(packages);
 
         // Scan
-        System.out.println("Scanning: " + projectPath.toAbsolutePath());
-        if (!packages.isEmpty()) {
-            System.out.println("Package filters: " + packages);
-        }
-        System.out.println();
-
-        long startTime = System.currentTimeMillis();
-
         ScanResult result;
         if (mavenProject) {
             result = scanner.scanMavenProject(projectPath);
@@ -81,17 +73,12 @@ public class ActorScanCli implements Callable<Integer> {
             result = scanner.scan(projectPath);
         }
 
-        long elapsed = System.currentTimeMillis() - startTime;
-
         // Output results
         ConsoleOutput output = new ConsoleOutput()
             .showEmptyMethods(showEmpty)
             .showOnlyPublicMethods(publicOnly);
 
         output.print(result);
-
-        System.out.println("─".repeat(70));
-        System.out.printf("Scanned %d classes in %d ms%n", scanner.getClassesScanned(), elapsed);
 
         return 0;
     }
