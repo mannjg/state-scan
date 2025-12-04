@@ -1,6 +1,7 @@
 package io.statescan.graph;
 
 import io.statescan.config.LeafTypeConfig;
+import io.statescan.di.QualifierExtractor;
 import io.statescan.model.RiskLevel;
 
 import java.util.*;
@@ -251,12 +252,21 @@ public class PathFinder {
 
         if (methodContext == null) {
             // CLASS-LEVEL: Get edges from ALL methods
-            
+
             // Field types (class-level view of all fields)
             for (FieldNode field : cls.fields()) {
                 String fieldType = extractTypeName(field.type());
                 if (fieldType != null) {
                     edges.add(EdgeInfo.field(fieldType, field.name(), null));
+
+                    // For @Inject fields, add qualified DI binding edges
+                    if (QualifierExtractor.isInjectionPoint(field.annotations())) {
+                        String qualifier = QualifierExtractor.extractQualifier(field.annotations());
+                        for (String impl : graph.getImplementations(fieldType, qualifier)) {
+                            String label = qualifier != null ? "@" + qualifier : "@Inject";
+                            edges.add(EdgeInfo.classLevel(impl, label, EdgeType.DI_BINDING));
+                        }
+                    }
                 }
             }
 

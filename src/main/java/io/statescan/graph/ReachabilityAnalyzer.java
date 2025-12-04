@@ -1,5 +1,7 @@
 package io.statescan.graph;
 
+import io.statescan.di.QualifierExtractor;
+
 import java.util.*;
 
 /**
@@ -86,16 +88,25 @@ public class ReachabilityAnalyzer {
                 }
             }
 
-            // Follow field type edges
+            // Follow field type edges and DI bindings for @Inject fields
             for (FieldNode field : currentClass.fields()) {
                 String fieldType = extractTypeFromDescriptor(field.type());
                 if (fieldType != null) {
                     addIfNew(fieldType, reachable, workQueue);
+                    
+                    // For @Inject fields, also follow qualified DI bindings
+                    if (QualifierExtractor.isInjectionPoint(field.annotations())) {
+                        String qualifier = QualifierExtractor.extractQualifier(field.annotations());
+                        Set<String> implementations = graph.getImplementations(fieldType, qualifier);
+                        for (String impl : implementations) {
+                            addIfNew(impl, reachable, workQueue);
+                        }
+                    }
                 }
             }
 
-            // Follow DI binding edges (Guice, CDI)
-            // For each interface/abstract class we've reached, follow bindings to implementations
+            // Follow DI binding edges (Guice, CDI) at class level for non-field bindings
+            // This handles cases where a class is bound to an interface without field injection
             Set<String> implementations = graph.getImplementations(current);
             for (String impl : implementations) {
                 addIfNew(impl, reachable, workQueue);
@@ -164,16 +175,27 @@ public class ReachabilityAnalyzer {
                 }
             }
 
-            // Follow field type edges
+            // Follow field type edges and DI bindings for @Inject fields
             for (FieldNode field : currentClass.fields()) {
                 String fieldType = extractTypeFromDescriptor(field.type());
                 if (fieldType != null) {
                     addWithReason(fieldType, ReachabilityReason.FIELD_TYPE,
                             current + "." + field.name(), nextDepth, reachabilityMap, workQueue);
+                    
+                    // For @Inject fields, also follow qualified DI bindings
+                    if (QualifierExtractor.isInjectionPoint(field.annotations())) {
+                        String qualifier = QualifierExtractor.extractQualifier(field.annotations());
+                        Set<String> implementations = graph.getImplementations(fieldType, qualifier);
+                        for (String impl : implementations) {
+                            addWithReason(impl, ReachabilityReason.DI_BINDING,
+                                    current + "." + field.name() + (qualifier != null ? " @" + qualifier : ""),
+                                    nextDepth, reachabilityMap, workQueue);
+                        }
+                    }
                 }
             }
 
-            // Follow DI binding edges (Guice, CDI)
+            // Follow DI binding edges (Guice, CDI) at class level for non-field bindings
             Set<String> implementations = graph.getImplementations(current);
             for (String impl : implementations) {
                 addWithReason(impl, ReachabilityReason.DI_BINDING,

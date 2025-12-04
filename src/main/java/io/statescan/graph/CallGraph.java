@@ -1,5 +1,7 @@
 package io.statescan.graph;
 
+import io.statescan.di.BindingKey;
+
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -16,21 +18,25 @@ public class CallGraph {
     private final Map<String, Set<String>> supertypes;    // child -> all ancestors (transitive)
     private final Map<MethodRef, Set<MethodRef>> calledBy; // method -> methods that call it
 
-    // DI binding edges: interface/abstract -> concrete implementations
-    private final Map<String, Set<String>> diBindings;
+    // DI binding edges: BindingKey (type + qualifier) -> concrete implementations
+    private final Map<BindingKey, Set<String>> diBindings;
+
+    // Index for efficient unqualified lookups: type -> all implementations (across all qualifiers)
+    private final Map<String, Set<String>> diBindingsByType;
 
     private CallGraph(
             Map<String, ClassNode> classes,
             Map<String, Set<String>> subtypes,
             Map<String, Set<String>> supertypes,
             Map<MethodRef, Set<MethodRef>> calledBy,
-            Map<String, Set<String>> diBindings
+            Map<BindingKey, Set<String>> diBindings
     ) {
         this.classes = Map.copyOf(classes);
         this.subtypes = deepCopySetMap(subtypes);
         this.supertypes = deepCopySetMap(supertypes);
         this.calledBy = deepCopySetMap(calledBy);
-        this.diBindings = deepCopySetMap(diBindings);
+        this.diBindings = deepCopyBindingMap(diBindings);
+        this.diBindingsByType = buildTypeIndex(this.diBindings);
     }
 
     private static <K, V> Map<K, Set<V>> deepCopySetMap(Map<K, Set<V>> original) {
@@ -39,6 +45,28 @@ public class CallGraph {
                         Map.Entry::getKey,
                         e -> Set.copyOf(e.getValue())
                 ));
+    }
+
+    private static Map<BindingKey, Set<String>> deepCopyBindingMap(Map<BindingKey, Set<String>> original) {
+        return original.entrySet().stream()
+                .collect(Collectors.toMap(
+                        Map.Entry::getKey,
+                        e -> Set.copyOf(e.getValue())
+                ));
+    }
+
+    /**
+     * Builds an index from type to all implementations across all qualifiers.
+     */
+    private static Map<String, Set<String>> buildTypeIndex(Map<BindingKey, Set<String>> bindings) {
+        Map<String, Set<String>> index = new HashMap<>();
+        for (Map.Entry<BindingKey, Set<String>> entry : bindings.entrySet()) {
+            String type = entry.getKey().type();
+            index.computeIfAbsent(type, k -> new HashSet<>()).addAll(entry.getValue());
+        }
+        // Make immutable
+        return index.entrySet().stream()
+                .collect(Collectors.toMap(Map.Entry::getKey, e -> Set.copyOf(e.getValue())));
     }
 
     /**
@@ -117,25 +145,63 @@ public class CallGraph {
     }
 
     /**
-     * Returns implementations bound to the given interface via DI.
-     * This includes both Guice bindings and CDI bean discovery.
+     * Returns implementations bound to the given interface via DI (unqualified lookup).
+     * This aggregates implementations across all qualifiers for the type.
+     * For precise qualifier matching, use {@link #getImplementations(String, String)}.
      */
     public Set<String> getImplementations(String interfaceFqn) {
-        return diBindings.getOrDefault(interfaceFqn, Set.of());
+        return diBindingsByType.getOrDefault(interfaceFqn, Set.of());
     }
 
     /**
-     * Checks if the given type has DI bindings.
+     * Returns implementations bound to the given interface with a specific qualifier.
+     *
+     * @param interfaceFqn The interface/type fully qualified name
+     * @param qualifier The qualifier simple name (e.g., "ExternalFooService"), or null for unqualified
+     * @return Set of implementation FQNs, or empty set if no binding found
+     */
+    public Set<String> getImplementations(String interfaceFqn, String qualifier) {
+        BindingKey key = BindingKey.of(interfaceFqn, qualifier);
+        return diBindings.getOrDefault(key, Set.of());
+    }
+
+    /**
+     * Returns implementations for the given binding key.
+     *
+     * @param key The binding key (type + optional qualifier)
+     * @return Set of implementation FQNs, or empty set if no binding found
+     */
+    public Set<String> getImplementations(BindingKey key) {
+        return diBindings.getOrDefault(key, Set.of());
+    }
+
+    /**
+     * Checks if the given type has DI bindings (any qualifier).
      */
     public boolean hasDIBinding(String type) {
-        return diBindings.containsKey(type);
+        return diBindingsByType.containsKey(type);
     }
 
     /**
-     * Returns all DI bindings.
+     * Checks if the given binding key has DI bindings.
      */
-    public Map<String, Set<String>> allDIBindings() {
+    public boolean hasDIBinding(BindingKey key) {
+        return diBindings.containsKey(key);
+    }
+
+    /**
+     * Returns all DI bindings (keyed by BindingKey).
+     */
+    public Map<BindingKey, Set<String>> allDIBindings() {
         return Collections.unmodifiableMap(diBindings);
+    }
+
+    /**
+     * Returns all DI bindings as a simple type-to-implementations map (ignoring qualifiers).
+     * This is for backward compatibility with code that doesn't need qualifier awareness.
+     */
+    public Map<String, Set<String>> allDIBindingsByType() {
+        return Collections.unmodifiableMap(diBindingsByType);
     }
 
     /**
@@ -205,13 +271,24 @@ public class CallGraph {
     }
 
     /**
-     * Creates a new CallGraph with additional DI bindings merged in.
-     * This is used after bytecode scanning to add Guice/CDI binding information.
+     * Creates a new CallGraph with additional DI bindings merged in (BindingKey-based).
+     * This is the preferred method for adding Guice bindings with qualifier support.
      */
-    public CallGraph withDIBindings(Map<String, Set<String>> additionalBindings) {
-        Map<String, Set<String>> mergedBindings = new HashMap<>(diBindings);
-        additionalBindings.forEach((iface, impls) ->
-                mergedBindings.computeIfAbsent(iface, k -> new HashSet<>()).addAll(impls));
+    public CallGraph withDIBindings(Map<BindingKey, Set<String>> additionalBindings) {
+        Map<BindingKey, Set<String>> mergedBindings = new HashMap<>(diBindings);
+        additionalBindings.forEach((key, impls) ->
+                mergedBindings.computeIfAbsent(key, k -> new HashSet<>()).addAll(impls));
+        return new CallGraph(classes, subtypes, supertypes, calledBy, mergedBindings);
+    }
+
+    /**
+     * Creates a new CallGraph with additional DI bindings merged in (type-only, unqualified).
+     * This is for backward compatibility with CDI discovery that doesn't use qualifiers yet.
+     */
+    public CallGraph withUnqualifiedDIBindings(Map<String, Set<String>> additionalBindings) {
+        Map<BindingKey, Set<String>> mergedBindings = new HashMap<>(diBindings);
+        additionalBindings.forEach((type, impls) ->
+                mergedBindings.computeIfAbsent(BindingKey.unqualified(type), k -> new HashSet<>()).addAll(impls));
         return new CallGraph(classes, subtypes, supertypes, calledBy, mergedBindings);
     }
 
@@ -245,8 +322,8 @@ public class CallGraph {
                                 .collect(Collectors.toSet())
                 ));
 
-        Map<String, Set<String>> filteredDIBindings = diBindings.entrySet().stream()
-                .filter(e -> reachableClasses.contains(e.getKey()))
+        Map<BindingKey, Set<String>> filteredDIBindings = diBindings.entrySet().stream()
+                .filter(e -> reachableClasses.contains(e.getKey().type()))
                 .collect(Collectors.toMap(
                         Map.Entry::getKey,
                         e -> e.getValue().stream()
@@ -269,7 +346,7 @@ public class CallGraph {
         private final Map<String, Set<String>> subtypes = new HashMap<>();
         private final Map<String, Set<String>> supertypes = new HashMap<>();
         private final Map<MethodRef, Set<MethodRef>> calledBy = new HashMap<>();
-        private final Map<String, Set<String>> diBindings = new HashMap<>();
+        private final Map<BindingKey, Set<String>> diBindings = new HashMap<>();
 
         public Builder addClass(ClassNode classNode) {
             classes.put(classNode.fqn(), classNode);
@@ -292,19 +369,36 @@ public class CallGraph {
         }
 
         /**
-         * Adds a single DI binding from interface to implementation.
+         * Adds a single DI binding from interface to implementation (unqualified).
          */
         public Builder addDIBinding(String interfaceFqn, String implementationFqn) {
-            diBindings.computeIfAbsent(interfaceFqn, k -> new HashSet<>()).add(implementationFqn);
+            diBindings.computeIfAbsent(BindingKey.unqualified(interfaceFqn), k -> new HashSet<>()).add(implementationFqn);
             return this;
         }
 
         /**
-         * Adds multiple DI bindings at once.
+         * Adds a single DI binding with qualifier support.
          */
-        public Builder addDIBindings(Map<String, Set<String>> bindings) {
-            bindings.forEach((iface, impls) ->
-                    diBindings.computeIfAbsent(iface, k -> new HashSet<>()).addAll(impls));
+        public Builder addDIBinding(BindingKey key, String implementationFqn) {
+            diBindings.computeIfAbsent(key, k -> new HashSet<>()).add(implementationFqn);
+            return this;
+        }
+
+        /**
+         * Adds multiple DI bindings at once (BindingKey-based).
+         */
+        public Builder addDIBindings(Map<BindingKey, Set<String>> bindings) {
+            bindings.forEach((key, impls) ->
+                    diBindings.computeIfAbsent(key, k -> new HashSet<>()).addAll(impls));
+            return this;
+        }
+
+        /**
+         * Adds multiple DI bindings at once (unqualified, for backward compatibility).
+         */
+        public Builder addUnqualifiedDIBindings(Map<String, Set<String>> bindings) {
+            bindings.forEach((type, impls) ->
+                    diBindings.computeIfAbsent(BindingKey.unqualified(type), k -> new HashSet<>()).addAll(impls));
             return this;
         }
 

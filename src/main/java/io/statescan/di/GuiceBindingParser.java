@@ -7,23 +7,6 @@ import io.statescan.graph.MethodRef;
 
 import java.util.*;
 
-/**
- * Extracts Guice dependency injection bindings from module classes.
- * <p>
- * Parses Guice module classes to extract interface-to-implementation bindings.
- * This enables the reachability analyzer to follow DI binding edges when
- * determining which classes are reachable from project roots.
- * <p>
- * Supported patterns:
- * <ul>
- *   <li>{@code bind(Interface.class).to(Implementation.class)}</li>
- *   <li>{@code bind(Interface.class).to(Implementation.class).in(Singleton.class)}</li>
- *   <li>{@code bind(Interface.class).toInstance(object)}</li>
- *   <li>{@code @Provides} methods - return type becomes the provided binding</li>
- *   <li>{@code install(new OtherModule())} - recursive module parsing</li>
- *   <li>Abstract module inheritance - parse parent configure() methods</li>
- * </ul>
- */
 public class GuiceBindingParser {
 
     private static final String ABSTRACT_MODULE = "com.google.inject.AbstractModule";
@@ -42,15 +25,15 @@ public class GuiceBindingParser {
      * Extracts all bindings from Guice module classes in the call graph.
      *
      * @param graph The call graph containing all scanned classes
-     * @return Map of interface FQN to set of implementation FQNs
+     * @return Map of BindingKey to set of implementation FQNs
      */
-    public Map<String, Set<String>> extractAllBindings(CallGraph graph) {
-        Map<String, Set<String>> bindings = new HashMap<>();
+    public Map<BindingKey, Set<String>> extractAllBindings(CallGraph graph) {
+        Map<BindingKey, Set<String>> bindings = new HashMap<>();
 
         // Find all Guice module classes
         for (ClassNode cls : graph.allClasses()) {
             if (isGuiceModule(cls, graph)) {
-                Map<String, Set<String>> moduleBindings = extractBindings(cls, graph);
+                Map<BindingKey, Set<String>> moduleBindings = extractBindings(cls, graph);
                 mergeBindings(bindings, moduleBindings);
             }
         }
@@ -63,10 +46,10 @@ public class GuiceBindingParser {
      *
      * @param moduleClass The module class to parse
      * @param graph       The call graph for looking up related classes
-     * @return Map of interface FQN to set of implementation FQNs
+     * @return Map of BindingKey to set of implementation FQNs
      */
-    public Map<String, Set<String>> extractBindings(ClassNode moduleClass, CallGraph graph) {
-        Map<String, Set<String>> bindings = new HashMap<>();
+    public Map<BindingKey, Set<String>> extractBindings(ClassNode moduleClass, CallGraph graph) {
+        Map<BindingKey, Set<String>> bindings = new HashMap<>();
 
         // 1. Trace inheritance chain to AbstractModule
         List<ClassNode> moduleChain = traceModuleChain(moduleClass, graph);
@@ -127,8 +110,9 @@ public class GuiceBindingParser {
      * </pre>
      * <p>
      * Uses class constants (from LDC instructions) to identify the bound types.
+     * Note: configure() bindings don't typically have qualifiers (qualifiers are on @Provides methods).
      */
-    private void parseConfigureMethod(ClassNode module, Map<String, Set<String>> bindings, CallGraph graph) {
+    private void parseConfigureMethod(ClassNode module, Map<BindingKey, Set<String>> bindings, CallGraph graph) {
         Optional<MethodNode> configureOpt = module.methods().stream()
                 .filter(MethodNode::isGuiceConfigureMethod)
                 .findFirst();
@@ -165,12 +149,13 @@ public class GuiceBindingParser {
             constants.removeIf(this::isGuiceInfrastructureClass);
 
             // Simple pairing: assume pairs of (interface, impl)
+            // configure() bindings are typically unqualified
             for (int i = 0; i + 1 < constants.size(); i += 2) {
                 String iface = constants.get(i);
                 String impl = constants.get(i + 1);
 
                 // Validate: impl should be a concrete class that could implement iface
-                addBinding(bindings, iface, impl);
+                addBinding(bindings, BindingKey.unqualified(iface), impl);
             }
         }
     }
@@ -178,29 +163,49 @@ public class GuiceBindingParser {
     /**
      * Parses @Provides methods in the module.
      * The return type of the method becomes the binding.
+     * Qualifier annotations on the method are captured for proper binding matching.
      */
-    private void parseProvidesMethods(ClassNode module, Map<String, Set<String>> bindings) {
+    private void parseProvidesMethods(ClassNode module, Map<BindingKey, Set<String>> bindings) {
         for (MethodNode method : module.methods()) {
             if (method.isProviderMethod()) {
                 // Extract return type from descriptor
                 String returnType = extractReturnType(method.descriptor());
                 if (returnType != null && !isPrimitive(returnType)) {
+                    // Extract qualifier annotation if present
+                    String qualifier = extractQualifier(method.annotations());
+                    BindingKey key = BindingKey.of(returnType, qualifier);
+
                     // The provider method itself provides this type
                     // For reachability, we need to know that this module provides this type
                     // This is captured by the method's invocations
                     for (String classRef : method.classConstantRefs()) {
                         // If the method creates instances of classes, record them
-                        addBinding(bindings, returnType, classRef);
+                        addBinding(bindings, key, classRef);
                     }
+
+                    // Also record a binding from the return type to the module class itself
+                    // This helps with reachability when the @Provides method doesn't use class constants
+                    addBinding(bindings, key, module.fqn());
                 }
             }
         }
     }
 
     /**
+     * Extracts the qualifier annotation from a set of annotations.
+     * Delegates to shared QualifierExtractor utility.
+     *
+     * @param annotations Set of fully qualified annotation class names
+     * @return The qualifier simple name, or null if no qualifier found
+     */
+    private String extractQualifier(Set<String> annotations) {
+        return QualifierExtractor.extractQualifier(annotations);
+    }
+
+    /**
      * Parses install() calls to find transitively installed modules.
      */
-    private void parseInstallCalls(ClassNode module, Map<String, Set<String>> bindings,
+    private void parseInstallCalls(ClassNode module, Map<BindingKey, Set<String>> bindings,
                                    CallGraph graph, Set<String> visited) {
         if (visited.contains(module.fqn())) {
             return;
@@ -234,7 +239,7 @@ public class GuiceBindingParser {
             Optional<ClassNode> installedModule = graph.getClass(classRef);
             if (installedModule.isPresent() && isGuiceModule(installedModule.get(), graph)) {
                 // Recursively extract bindings from installed module
-                Map<String, Set<String>> installedBindings = extractBindings(installedModule.get(), graph);
+                Map<BindingKey, Set<String>> installedBindings = extractBindings(installedModule.get(), graph);
                 mergeBindings(bindings, installedBindings);
             }
         }
@@ -324,19 +329,19 @@ public class GuiceBindingParser {
     }
 
     /**
-     * Adds a binding from interface to implementation.
+     * Adds a binding from binding key to implementation.
      */
-    private void addBinding(Map<String, Set<String>> bindings, String iface, String impl) {
-        if (iface == null || impl == null) return;
-        if (iface.equals(impl)) return; // Self-binding is not useful
-        bindings.computeIfAbsent(iface, k -> new HashSet<>()).add(impl);
+    private void addBinding(Map<BindingKey, Set<String>> bindings, BindingKey key, String impl) {
+        if (key == null || key.type() == null || impl == null) return;
+        if (key.type().equals(impl)) return; // Self-binding is not useful
+        bindings.computeIfAbsent(key, k -> new HashSet<>()).add(impl);
     }
 
     /**
      * Merges source bindings into target bindings.
      */
-    private void mergeBindings(Map<String, Set<String>> target, Map<String, Set<String>> source) {
-        source.forEach((iface, impls) ->
-                target.computeIfAbsent(iface, k -> new HashSet<>()).addAll(impls));
+    private void mergeBindings(Map<BindingKey, Set<String>> target, Map<BindingKey, Set<String>> source) {
+        source.forEach((key, impls) ->
+                target.computeIfAbsent(key, k -> new HashSet<>()).addAll(impls));
     }
 }

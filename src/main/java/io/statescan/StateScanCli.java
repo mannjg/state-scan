@@ -6,6 +6,7 @@ import io.statescan.classpath.ClasspathResolver.ResolvedClasspath;
 import io.statescan.classpath.ClasspathResolverFactory;
 import io.statescan.config.LeafTypeConfig;
 import io.statescan.detectors.DetectorRegistry;
+import io.statescan.di.BindingKey;
 import io.statescan.di.CDIBeanDiscovery;
 import io.statescan.di.GuiceBindingParser;
 import io.statescan.graph.CallGraph;
@@ -227,10 +228,9 @@ public class StateScanCli implements Callable<Integer> {
 
             // Step 3: Extract DI bindings (Guice, CDI)
             log("Extracting DI bindings...");
-            Map<String, Set<String>> diBindings = extractDIBindings(scannedGraph);
-            CallGraph fullGraph = scannedGraph.withDIBindings(diBindings);
+            CallGraph fullGraph = extractAndMergeDIBindings(scannedGraph);
 
-            log("  Found " + diBindings.size() + " DI binding relationships");
+            log("  Found " + fullGraph.allDIBindings().size() + " DI binding relationships");
 
             // Step 4: Reachability analysis (tree-shaking)
             log("Analyzing reachability...");
@@ -472,24 +472,23 @@ public class StateScanCli implements Callable<Integer> {
     }
 
     /**
-     * Extracts DI bindings from Guice modules and CDI beans.
+     * Extracts DI bindings from Guice modules and CDI beans, and merges them into the graph.
+     * Guice bindings support qualifiers (BindingKey), while CDI bindings are currently unqualified.
      */
-    private Map<String, Set<String>> extractDIBindings(CallGraph graph) {
-        Map<String, Set<String>> allBindings = new HashMap<>();
-
-        // Extract Guice bindings
+    private CallGraph extractAndMergeDIBindings(CallGraph graph) {
+        // Extract Guice bindings (with qualifier support)
         GuiceBindingParser guiceParser = new GuiceBindingParser();
-        Map<String, Set<String>> guiceBindings = guiceParser.extractAllBindings(graph);
-        guiceBindings.forEach((iface, impls) ->
-                allBindings.computeIfAbsent(iface, k -> new java.util.HashSet<>()).addAll(impls));
+        Map<BindingKey, Set<String>> guiceBindings = guiceParser.extractAllBindings(graph);
 
-        // Extract CDI bindings
+        // First merge Guice bindings
+        CallGraph withGuice = graph.withDIBindings(guiceBindings);
+
+        // Extract CDI bindings (unqualified for now)
         CDIBeanDiscovery cdiDiscovery = new CDIBeanDiscovery();
-        Map<String, Set<String>> cdiBindings = cdiDiscovery.discoverBindings(graph);
-        cdiBindings.forEach((iface, impls) ->
-                allBindings.computeIfAbsent(iface, k -> new java.util.HashSet<>()).addAll(impls));
+        Map<String, Set<String>> cdiBindings = cdiDiscovery.discoverBindings(withGuice);
 
-        return allBindings;
+        // Merge CDI bindings as unqualified
+        return withGuice.withUnqualifiedDIBindings(cdiBindings);
     }
 
     /**
