@@ -1,0 +1,31 @@
+# State-scan configuration for Apache Pulsar
+# Use: java -jar state-scan.jar --config configs/pulsar.yaml --callgraph --maven
+
+# Path to the project to scan
+projectPath: /home/jmann/git/pulsar
+
+# Package prefixes to include in scan
+packages:
+  - org.apache.pulsar
+
+# Package prefixes to exclude from scanning entirely
+excludePackages:
+  - org.apache.pulsar.shade
+  - org.apache.pulsar.tests
+
+# Root packages for dependency analysis
+rootPackages:
+  - org.apache.pulsar.broker
+
+# Classes/prefixes to exclude from callgraph traversal
+# Callers of these become leaf nodes
+# Use trailing dot for prefix match, exact FQN for single class
+excludeClasses:
+  # Logging - treat as leaf
+  - org.slf4j.Logger
+  - org.apache.logging.log4j.Logger
+  
+  # Test frameworks - prefix match
+  - org.mockito.
+  - org.junit.
+  - org.testng.

@@ -11,17 +11,10 @@ import picocli.CommandLine.*;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.Callable;
-import java.util.stream.Collectors;
 
-/**
- * CLI entry point for the Actor Scanner.
- * <p>
- * Scans Java bytecode to extract class -> method -> actor relationships.
- */
 @Command(
     name = "actor-scan",
     mixinStandardHelpOptions = true,
@@ -30,16 +23,9 @@ import java.util.stream.Collectors;
 )
 public class ActorScanCli implements Callable<Integer> {
 
-    @Parameters(index = "0", description = "Path to scan (directory with target/classes, or JAR file)")
-    private Path projectPath;
-
-    @Option(names = {"-p", "--packages"},
-            description = "Package prefixes to include (comma-separated, e.g., 'com.example,org.myapp')")
-    private String packagePrefixes;
-
-    @Option(names = {"-x", "--exclude-packages"},
-            description = "Package prefixes to exclude (comma-separated, takes precedence over includes)")
-    private String excludePackages;
+    @Option(names = {"-c", "--config"}, required = true,
+            description = "Path to YAML configuration file")
+    private Path configPath;
 
     @Option(names = {"--show-empty"},
             description = "Show methods with no actors")
@@ -53,10 +39,6 @@ public class ActorScanCli implements Callable<Integer> {
             description = "Scan as Maven multi-module project")
     private boolean mavenProject = false;
 
-    @Option(names = {"--root-packages"},
-            description = "Additional package prefixes to scan from transitive dependencies (comma-separated, requires --maven)")
-    private String rootPackages;
-
     @Option(names = {"--callgraph"},
             description = "Build and display callgraph with parameter flow")
     private boolean showCallgraph = false;
@@ -67,47 +49,35 @@ public class ActorScanCli implements Callable<Integer> {
 
     @Override
     public Integer call() throws Exception {
-        // Validate path
+        // Load config
+        if (!Files.exists(configPath)) {
+            System.err.println("Error: Config file does not exist: " + configPath);
+            return 1;
+        }
+
+        ScanConfig config;
+        try {
+            config = ScanConfig.load(configPath);
+        } catch (Exception e) {
+            System.err.println("Error loading config: " + e.getMessage());
+            return 1;
+        }
+
+        // Validate project path
+        Path projectPath = config.getProjectPath();
         if (!Files.exists(projectPath)) {
-            System.err.println("Error: Path does not exist: " + projectPath);
+            System.err.println("Error: Project path does not exist: " + projectPath);
             return 1;
         }
 
-        // Parse package prefixes
-        Set<String> packages = Set.of();
-        if (packagePrefixes != null && !packagePrefixes.isBlank()) {
-            packages = Arrays.stream(packagePrefixes.split(","))
-                .map(String::trim)
-                .filter(s -> !s.isEmpty())
-                .collect(Collectors.toSet());
-        }
-
-        // Parse exclude packages
-        Set<String> excludePkgs = Set.of();
-        if (excludePackages != null && !excludePackages.isBlank()) {
-            excludePkgs = Arrays.stream(excludePackages.split(","))
-                .map(String::trim)
-                .filter(s -> !s.isEmpty())
-                .collect(Collectors.toSet());
-        }
-
-        // Parse root packages for dependency scanning
-        Set<String> rootPkgs = Set.of();
-        if (rootPackages != null && !rootPackages.isBlank()) {
-            rootPkgs = Arrays.stream(rootPackages.split(","))
-                .map(String::trim)
-                .filter(s -> !s.isEmpty())
-                .collect(Collectors.toSet());
-        }
-
-        // Validate: --root-packages requires --maven
-        if (!rootPkgs.isEmpty() && !mavenProject) {
-            System.err.println("Error: --root-packages requires --maven mode");
-            return 1;
+        // Validate: rootPackages implies maven mode
+        if (config.hasRootPackages() && !mavenProject) {
+            System.err.println("Warning: rootPackages configured but --maven not specified. Enabling maven mode.");
+            mavenProject = true;
         }
 
         // Create scanner
-        ProjectScanner scanner = new ProjectScanner(packages, excludePkgs, rootPkgs);
+        ProjectScanner scanner = new ProjectScanner(config);
 
         // Scan
         ScanResult result;
@@ -123,14 +93,14 @@ public class ActorScanCli implements Callable<Integer> {
         if (showCallgraph) {
             // Build callgraph
             Set<String> callgraphPackages = new HashSet<>();
-            if (!packages.isEmpty()) {
-                callgraphPackages.addAll(packages);
+            if (!config.getPackages().isEmpty()) {
+                callgraphPackages.addAll(config.getPackages());
             }
-            if (!rootPkgs.isEmpty()) {
-                callgraphPackages.addAll(rootPkgs);
+            if (!config.getRootPackages().isEmpty()) {
+                callgraphPackages.addAll(config.getRootPackages());
             }
 
-            CallGraphBuilder builder = new CallGraphBuilder(result, callgraphPackages);
+            CallGraphBuilder builder = new CallGraphBuilder(result, callgraphPackages, config);
             CallGraph callGraph = builder.build();
 
             // Output callgraph

@@ -1,5 +1,6 @@
 package io.statescan.bytecode;
 
+import io.statescan.ScanConfig;
 import io.statescan.model.ClassInfo;
 import io.statescan.model.ScanResult;
 import org.objectweb.asm.ClassReader;
@@ -55,6 +56,15 @@ public class ProjectScanner {
      */
     public ProjectScanner() {
         this(Set.of(), Set.of(), Set.of());
+    }
+
+    /**
+     * Creates a ProjectScanner from a ScanConfig.
+     *
+     * @param config The scan configuration
+     */
+    public ProjectScanner(ScanConfig config) {
+        this(config.getPackages(), config.getExcludePackages(), config.getRootPackages());
     }
 
     /**

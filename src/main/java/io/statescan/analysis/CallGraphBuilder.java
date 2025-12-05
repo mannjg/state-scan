@@ -1,5 +1,6 @@
 package io.statescan.analysis;
 
+import io.statescan.ScanConfig;
 import io.statescan.bytecode.DescriptorParser;
 import io.statescan.model.*;
 
@@ -19,6 +20,7 @@ public class CallGraphBuilder {
     private final ScanResult scanResult;
     private final Set<String> rootPackages;
     private final Map<String, Set<String>> implementationMap;
+    private final ScanConfig config;  // May be null for backward compatibility
 
     /**
      * Create a CallGraphBuilder.
@@ -27,9 +29,21 @@ public class CallGraphBuilder {
      * @param rootPackages Package prefixes to consider "internal" (for root/leaf detection)
      */
     public CallGraphBuilder(ScanResult scanResult, Set<String> rootPackages) {
+        this(scanResult, rootPackages, null);
+    }
+
+    /**
+     * Create a CallGraphBuilder with config for class exclusions.
+     *
+     * @param scanResult   The scan results containing all classes
+     * @param rootPackages Package prefixes to consider "internal" (for root/leaf detection)
+     * @param config       Optional scan config with class exclusions for callgraph pruning
+     */
+    public CallGraphBuilder(ScanResult scanResult, Set<String> rootPackages, ScanConfig config) {
         this.scanResult = scanResult;
         this.rootPackages = rootPackages;
         this.implementationMap = scanResult.buildImplementationMap();
+        this.config = config;
     }
 
     /**
@@ -154,6 +168,7 @@ public class CallGraphBuilder {
 
     /**
      * Find leaf methods - methods with no outgoing calls to internal methods.
+     * Also treats calls to excluded classes as external (for callgraph pruning).
      */
     private Set<MethodRef> findLeafMethods(Set<MethodRef> allInternalMethods,
                                             Map<String, Set<CallEdge>> outgoing) {
@@ -163,11 +178,23 @@ public class CallGraphBuilder {
                 if (callees == null || callees.isEmpty()) {
                     return true; // No outgoing calls
                 }
-                // Check if all callees are external
+                // Check if all callees are external or excluded
                 return callees.stream()
-                    .allMatch(edge -> !isInRootPackages(edge.callee().classFqn()));
+                    .allMatch(edge -> isExternalOrExcluded(edge.callee().classFqn()));
             })
             .collect(Collectors.toCollection(LinkedHashSet::new));
+    }
+
+    /**
+     * Check if a class is external (not in root packages) or excluded from callgraph.
+     */
+    private boolean isExternalOrExcluded(String classFqn) {
+        // First check if it's excluded from callgraph
+        if (config != null && config.isClassExcludedFromCallgraph(classFqn)) {
+            return true;
+        }
+        // Then check if it's external
+        return !isInRootPackages(classFqn);
     }
 
     /**
