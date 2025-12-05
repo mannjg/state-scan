@@ -120,9 +120,18 @@ public class ScanConfig {
 
     /**
      * Check if a class FQN is excluded from callgraph traversal.
-     * Trailing dot in pattern means prefix match, otherwise exact match.
+     * Checks both excludePackages (prefix match) and excludeClasses (pattern match).
+     * For excludeClasses: trailing dot means prefix match, otherwise exact match.
      */
     public boolean isClassExcludedFromCallgraph(String fqn) {
+        // Check excludePackages first (always prefix match)
+        for (String pkg : excludePackages) {
+            if (fqn.startsWith(pkg)) {
+                return true;
+            }
+        }
+        
+        // Then check excludeClasses patterns
         for (String pattern : excludeClasses) {
             if (pattern.endsWith(".")) {
                 // Prefix match
