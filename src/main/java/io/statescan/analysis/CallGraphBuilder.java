@@ -69,6 +69,11 @@ public class CallGraphBuilder {
                 }
 
                 for (MethodInvocation inv : methodInfo.invocations()) {
+                    // Skip invocations to excluded classes
+                    if (config != null && config.isClassExcludedFromCallgraph(inv.targetClassFqn())) {
+                        continue;
+                    }
+
                     // Resolve target method(s)
                     List<MethodRef> targets = resolveTargets(inv);
 

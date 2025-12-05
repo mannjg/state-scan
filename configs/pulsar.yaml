@@ -21,8 +21,13 @@ rootPackages:
 # Callers of these become leaf nodes
 # Use trailing dot for prefix match, exact FQN for single class
 excludeClasses:
+  # JDK classes - treat as leaf
+  - java.lang.Object
+  - java.util.Iterator
+  
   # Logging - treat as leaf
   - org.slf4j.Logger
+  - org.slf4j.LoggerFactory
   - org.apache.logging.log4j.Logger
   
   # Test frameworks - prefix match
