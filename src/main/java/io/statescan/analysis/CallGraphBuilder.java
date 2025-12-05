@@ -74,6 +74,11 @@ public class CallGraphBuilder {
                         continue;
                     }
 
+                    // Skip invocations to excluded methods
+                    if (config != null && config.isMethodExcludedFromCallgraph(inv.targetClassFqn(), inv.methodName())) {
+                        continue;
+                    }
+
                     // Resolve target method(s)
                     List<MethodRef> targets = resolveTargets(inv);
 
@@ -159,6 +164,10 @@ public class CallGraphBuilder {
 
         return allInternalMethods.stream()
             .filter(m -> methodsInGraph.contains(m.key()))
+            // Filter out methods from excluded classes/packages
+            .filter(m -> config == null || !config.isClassExcludedFromCallgraph(m.classFqn()))
+            // Filter out excluded methods
+            .filter(m -> config == null || !config.isMethodExcludedFromCallgraph(m.classFqn(), m.methodName()))
             .filter(m -> {
                 Set<CallEdge> callers = incoming.get(m.key());
                 if (callers == null || callers.isEmpty()) {
@@ -178,6 +187,10 @@ public class CallGraphBuilder {
     private Set<MethodRef> findLeafMethods(Set<MethodRef> allInternalMethods,
                                             Map<String, Set<CallEdge>> outgoing) {
         return allInternalMethods.stream()
+            // Filter out methods from excluded classes/packages
+            .filter(m -> config == null || !config.isClassExcludedFromCallgraph(m.classFqn()))
+            // Filter out excluded methods
+            .filter(m -> config == null || !config.isMethodExcludedFromCallgraph(m.classFqn(), m.methodName()))
             .filter(m -> {
                 Set<CallEdge> callees = outgoing.get(m.key());
                 if (callees == null || callees.isEmpty()) {
@@ -185,17 +198,21 @@ public class CallGraphBuilder {
                 }
                 // Check if all callees are external or excluded
                 return callees.stream()
-                    .allMatch(edge -> isExternalOrExcluded(edge.callee().classFqn()));
+                    .allMatch(edge -> isExternalOrExcluded(edge.callee()));
             })
             .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
     /**
-     * Check if a class is external (not in root packages) or excluded from callgraph.
+     * Check if a method is external (not in root packages) or excluded from callgraph.
      */
-    private boolean isExternalOrExcluded(String classFqn) {
-        // First check if it's excluded from callgraph
+    private boolean isExternalOrExcluded(MethodRef method) {
+        String classFqn = method.classFqn();
+        // First check if it's excluded from callgraph (class or method)
         if (config != null && config.isClassExcludedFromCallgraph(classFqn)) {
+            return true;
+        }
+        if (config != null && config.isMethodExcludedFromCallgraph(classFqn, method.methodName())) {
             return true;
         }
         // Then check if it's external

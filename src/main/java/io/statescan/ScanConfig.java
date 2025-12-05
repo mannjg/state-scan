@@ -23,17 +23,20 @@ public class ScanConfig {
     private final Set<String> excludePackages;
     private final Set<String> rootPackages;
     private final List<String> excludeClasses;
+    private final List<String> excludeMethods;
 
     private ScanConfig(Path projectPath,
                        Set<String> packages,
                        Set<String> excludePackages,
                        Set<String> rootPackages,
-                       List<String> excludeClasses) {
+                       List<String> excludeClasses,
+                       List<String> excludeMethods) {
         this.projectPath = projectPath;
         this.packages = packages;
         this.excludePackages = excludePackages;
         this.rootPackages = rootPackages;
         this.excludeClasses = excludeClasses;
+        this.excludeMethods = excludeMethods;
     }
 
     /**
@@ -68,7 +71,10 @@ public class ScanConfig {
             // Optional: excludeClasses (for callgraph pruning)
             List<String> excludeClasses = toList((List<String>) data.get("excludeClasses"));
 
-            return new ScanConfig(projectPath, packages, excludePackages, rootPackages, excludeClasses);
+            // Optional: excludeMethods (for callgraph pruning at method level)
+            List<String> excludeMethods = toList((List<String>) data.get("excludeMethods"));
+
+            return new ScanConfig(projectPath, packages, excludePackages, rootPackages, excludeClasses, excludeMethods);
         }
     }
 
@@ -118,6 +124,26 @@ public class ScanConfig {
         return excludeClasses;
     }
 
+    public List<String> getExcludeMethods() {
+        return excludeMethods;
+    }
+
+    /**
+     * Check if a value matches a pattern.
+     * Trailing dot means prefix match, otherwise exact match.
+     */
+    private static boolean matchesPattern(String value, String pattern) {
+        if (pattern.isEmpty()) {
+            return true; // Empty pattern matches everything
+        }
+        if (pattern.endsWith(".")) {
+            // Prefix match
+            return value.startsWith(pattern.substring(0, pattern.length() - 1));
+        }
+        // Exact match
+        return value.equals(pattern);
+    }
+
     /**
      * Check if a class FQN is excluded from callgraph traversal.
      * Checks both excludePackages (prefix match) and excludeClasses (pattern match).
@@ -133,14 +159,43 @@ public class ScanConfig {
         
         // Then check excludeClasses patterns
         for (String pattern : excludeClasses) {
-            if (pattern.endsWith(".")) {
-                // Prefix match
-                if (fqn.startsWith(pattern)) {
+            if (matchesPattern(fqn, pattern)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Check if a method is excluded from callgraph traversal.
+     * Pattern formats:
+     * - "methodName" - excludes method in any class
+     * - "methodName." - prefix match on method name (any class)
+     * - "ClassName#methodName" - excludes specific method on class
+     * - "ClassName#methodName." - prefix match on method name
+     * - "package.prefix.#methodName" - excludes method on any class in package
+     * - "#methodName" - same as "methodName" (empty class = any)
+     * - "ClassName#" - excludes all methods on class
+     */
+    public boolean isMethodExcludedFromCallgraph(String classFqn, String methodName) {
+        for (String pattern : excludeMethods) {
+            int hashIdx = pattern.indexOf('#');
+            if (hashIdx == -1) {
+                // Unqualified: just method pattern, applies to any class
+                if (matchesPattern(methodName, pattern)) {
                     return true;
                 }
             } else {
-                // Exact match
-                if (fqn.equals(pattern)) {
+                // Qualified: class#method
+                String classPattern = pattern.substring(0, hashIdx);
+                String methodPattern = pattern.substring(hashIdx + 1);
+                
+                // Empty classPattern means "any class"
+                boolean classMatches = classPattern.isEmpty() || matchesPattern(classFqn, classPattern);
+                // Empty methodPattern means "any method"
+                boolean methodMatches = methodPattern.isEmpty() || matchesPattern(methodName, methodPattern);
+                
+                if (classMatches && methodMatches) {
                     return true;
                 }
             }

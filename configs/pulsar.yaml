@@ -34,3 +34,23 @@ excludeClasses:
   - org.mockito.
   - org.junit.
   - org.testng.
+
+# Methods to exclude from callgraph traversal
+# Patterns:
+#   methodName       - excludes method in any class
+#   methodName.      - prefix match (e.g., get. matches getX, getY)
+#   Class#method     - excludes specific method on class
+#   package.#method  - excludes method on any class in package prefix
+excludeMethods:
+  # Common utility methods (any class)
+  - toString
+  - hashCode
+  - equals
+  - clone
+  
+  # Iterator methods
+  - java.util.Iterator#hasNext
+  - java.util.Iterator#next
+  
+  # Closeable
+  - close
