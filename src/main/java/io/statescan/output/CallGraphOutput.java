@@ -15,6 +15,11 @@ public class CallGraphOutput {
     private final ScanResult scanResult;
     private final PrintStream out;
     private final boolean useColor;
+    
+    // Track how many times each method is called (for collapsing duplicate leaf nodes)
+    private Map<String, Integer> callCounts;
+    // Track which methods have already been printed with their full subtree
+    private Set<String> printedMethods;
 
     // ANSI color codes
     private static final String RESET = "\u001B[0m";
@@ -79,10 +84,26 @@ public class CallGraphOutput {
     }
 
     /**
+     * Pre-compute how many times each method is called as a callee.
+     * This is used to collapse duplicate leaf nodes in output.
+     */
+    private void computeCallCounts() {
+        callCounts = new HashMap<>();
+        for (CallEdge edge : callGraph.allEdges().toList()) {
+            String key = edge.callee().key();
+            callCounts.merge(key, 1, Integer::sum);
+        }
+    }
+
+    /**
      * Print call tree starting from root classes/methods.
      */
     public void printCallTree() {
         out.println("=== CALL GRAPH ===");
+        
+        // Pre-compute call counts for collapsing
+        computeCallCounts();
+        printedMethods = new HashSet<>();
 
         // Group root methods by class, only those with outgoing calls
         Map<String, List<MethodRef>> rootsByClass = callGraph.rootMethods().stream()
@@ -113,13 +134,29 @@ public class CallGraphOutput {
         for (CallEdge edge : sortedCallees) {
             String actorType = formatReceiverType(edge.receiver());
             String calleeName = edge.callee().classFqn() + "." + edge.callee().methodName();
+            String calleeKey = edge.callee().key();
+            
+            // Get call count for this method
+            int count = callCounts.getOrDefault(calleeKey, 1);
+            String countSuffix = count > 1 ? color(DIM, " (×" + count + ")") : "";
 
-            boolean isCycle = visited.contains(edge.callee().key());
+            boolean isCycle = visited.contains(calleeKey);
             if (isCycle) {
-                out.println(spaces(indent) + color(YELLOW, actorType) + " " + calleeName + color(DIM, " (cycle)"));
+                out.println(spaces(indent) + color(YELLOW, actorType) + " " + calleeName + color(DIM, " (cycle)") + countSuffix);
+            } else if (printedMethods.contains(calleeKey)) {
+                // Already printed this method's subtree elsewhere - just show reference with count
+                out.println(spaces(indent) + color(YELLOW, actorType) + " " + calleeName + countSuffix);
             } else {
-                out.println(spaces(indent) + color(YELLOW, actorType) + " " + calleeName + ":");
-                printCallTreeRecursive(edge.callee(), indent + 2, visited);
+                // First time printing this method - mark as printed and show full subtree
+                boolean hasCallees = hasOutgoingCalls(edge.callee());
+                if (hasCallees) {
+                    printedMethods.add(calleeKey);
+                    out.println(spaces(indent) + color(YELLOW, actorType) + " " + calleeName + ":" + countSuffix);
+                    printCallTreeRecursive(edge.callee(), indent + 2, visited);
+                } else {
+                    // Leaf node - no subtree to print
+                    out.println(spaces(indent) + color(YELLOW, actorType) + " " + calleeName + countSuffix);
+                }
             }
         }
 
