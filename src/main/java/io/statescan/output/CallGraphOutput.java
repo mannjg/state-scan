@@ -206,7 +206,6 @@ public class CallGraphOutput {
     public void printFull() {
         printSummary();
         printCallTree();
-        printTypeNarrowings();
     }
 
     // Formatting helpers
