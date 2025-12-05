@@ -1,0 +1,74 @@
+[
+  {
+    "file": "org/apache/pulsar/functions/worker/FunctionMetaDataManager.java",
+    "line": 64,
+    "className": "org.apache.pulsar.functions.worker.FunctionMetaDataManager",
+    "fieldName": "functionMetaDataMap",
+    "fieldType": "Map<String, Map<String, Map<String, FunctionMetaData>>>",
+    "pattern": "static_mutable_collection",
+    "riskLevel": "HIGH"
+  },
+  {
+    "file": "org/apache/pulsar/functions/worker/FunctionRuntimeManager.java",
+    "line": 82,
+    "className": "org.apache.pulsar.functions.worker.FunctionRuntimeManager",
+    "fieldName": "workerIdToAssignments",
+    "fieldType": "Map<String, Map<String, Assignment>>",
+    "pattern": "static_mutable_collection",
+    "riskLevel": "HIGH"
+  },
+  {
+    "file": "org/apache/pulsar/functions/worker/FunctionRuntimeManager.java",
+    "line": 88,
+    "className": "org.apache.pulsar.functions.worker.FunctionRuntimeManager.FunctionRuntimeInfos",
+    "fieldName": "functionRuntimeInfoMap",
+    "fieldType": "Map<String, FunctionRuntimeInfo>",
+    "pattern": "static_mutable_collection",
+    "riskLevel": "HIGH"
+  },
+  {
+    "file": "org/apache/pulsar/functions/worker/SchedulerManager.java",
+    "line": 118,
+    "className": "org.apache.pulsar.functions.worker.SchedulerManager",
+    "fieldName": "isCompactionNeeded",
+    "fieldType": "AtomicBoolean",
+    "pattern": "atomic_mutable",
+    "riskLevel": "MEDIUM"
+  },
+  {
+    "file": "org/apache/pulsar/functions/worker/SchedulerManager.java",
+    "line": 145,
+    "className": "org.apache.pulsar.functions.worker.SchedulerManager",
+    "fieldName": "drainOpStatusMap",
+    "fieldType": "ConcurrentHashMap<String, DrainOpStatus>",
+    "pattern": "static_mutable_collection",
+    "riskLevel": "HIGH"
+  },
+  {
+    "file": "org/apache/pulsar/functions/worker/MembershipManager.java",
+    "line": 58,
+    "className": "org.apache.pulsar.functions.worker.MembershipManager",
+    "fieldName": "unsignedFunctionDurations",
+    "fieldType": "Map<Function.Instance, Long>",
+    "pattern": "static_mutable_collection",
+    "riskLevel": "HIGH"
+  },
+  {
+    "file": "org/apache/pulsar/functions/worker/ClusterServiceCoordinator.java",
+    "line": 50,
+    "className": "org.apache.pulsar.functions.worker.ClusterServiceCoordinator",
+    "fieldName": "tasks",
+    "fieldType": "Map<String, TimerTaskInfo>",
+    "pattern": "static_mutable_collection",
+    "riskLevel": "HIGH"
+  },
+  {
+    "file": "org/apache/pulsar/functions/worker/ErrorNotifierImpl.java",
+    "line": 27,
+    "className": "org.apache.pulsar.functions.worker.ErrorNotifierImpl",
+    "fieldName": "error",
+    "fieldType": "AtomicReference<Throwable>",
+    "pattern": "atomic_mutable",
+    "riskLevel": "MEDIUM"
+  }
+]
