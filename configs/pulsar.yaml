@@ -42,6 +42,9 @@ excludeClasses:
 #   Class#method     - excludes specific method on class
 #   package.#method  - excludes method on any class in package prefix
 excludeMethods:
+  # Constructors - typically initialization noise
+  - <init>
+  
   # Common utility methods (any class)
   - toString
   - hashCode

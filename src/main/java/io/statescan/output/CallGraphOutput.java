@@ -106,20 +106,45 @@ public class CallGraphOutput {
         }
 
         Set<CallEdge> callees = callGraph.getCallees(method);
-        List<CallEdge> sortedCallees = callees.stream()
+        if (callees == null || callees.isEmpty()) {
+            visited.remove(method.key());
+            return;
+        }
+
+        // Group edges by display key (actorType + callee key) for leaf consolidation
+        Map<String, List<CallEdge>> grouped = new LinkedHashMap<>();
+        callees.stream()
             .sorted(Comparator.comparing(e -> e.callee().key()))
-            .collect(Collectors.toList());
+            .forEach(edge -> {
+                String key = formatReceiverType(edge.receiver()) + "|" + edge.callee().key();
+                grouped.computeIfAbsent(key, k -> new ArrayList<>()).add(edge);
+            });
 
-        for (CallEdge edge : sortedCallees) {
-            String actorType = formatReceiverType(edge.receiver());
-            String calleeName = edge.callee().classFqn() + "." + edge.callee().methodName();
+        for (List<CallEdge> edges : grouped.values()) {
+            CallEdge representative = edges.get(0);
+            MethodRef callee = representative.callee();
+            String actorType = formatReceiverType(representative.receiver());
+            String calleeName = callee.classFqn() + "." + callee.methodName();
+            int count = edges.size();
 
-            boolean isCycle = visited.contains(edge.callee().key());
-            if (isCycle) {
-                out.println(spaces(indent) + color(YELLOW, actorType) + " " + calleeName + color(DIM, " (cycle)"));
+            boolean isCycle = visited.contains(callee.key());
+            Set<CallEdge> grandchildren = callGraph.getCallees(callee);
+            boolean isLeaf = isCycle || grandchildren == null || grandchildren.isEmpty();
+
+            if (isLeaf) {
+                // LEAF: consolidate with count, no colon, no recursion
+                String suffix = "";
+                if (count > 1) {
+                    suffix = " (×" + count + ")";
+                }
+                if (isCycle) {
+                    suffix += " (cycle)";
+                }
+                out.println(spaces(indent) + color(YELLOW, actorType) + " " + calleeName + color(DIM, suffix));
             } else {
+                // NON-LEAF: print once with colon, recurse (no count - only roll-up for leaves)
                 out.println(spaces(indent) + color(YELLOW, actorType) + " " + calleeName + ":");
-                printCallTreeRecursive(edge.callee(), indent + 2, visited);
+                printCallTreeRecursive(callee, indent + 2, visited);
             }
         }
 
