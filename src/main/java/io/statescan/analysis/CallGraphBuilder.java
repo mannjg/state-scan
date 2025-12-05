@@ -79,7 +79,7 @@ public class CallGraphBuilder {
         }
 
         // Phase 2: Find root and leaf methods
-        Set<MethodRef> rootMethods = findRootMethods(allInternalMethods, incoming);
+        Set<MethodRef> rootMethods = findRootMethods(allInternalMethods, outgoing, incoming);
         Set<MethodRef> leafMethods = findLeafMethods(allInternalMethods, outgoing);
 
         // Phase 3: Compute type contexts
@@ -128,10 +128,18 @@ public class CallGraphBuilder {
 
     /**
      * Find root methods - entry points with no incoming calls from internal methods.
+     * Only considers methods that actually participate in the callgraph.
      */
     private Set<MethodRef> findRootMethods(Set<MethodRef> allInternalMethods,
+                                            Map<String, Set<CallEdge>> outgoing,
                                             Map<String, Set<CallEdge>> incoming) {
+        // Only consider methods that are actually part of the callgraph
+        Set<String> methodsInGraph = new HashSet<>();
+        methodsInGraph.addAll(outgoing.keySet());
+        methodsInGraph.addAll(incoming.keySet());
+
         return allInternalMethods.stream()
+            .filter(m -> methodsInGraph.contains(m.key()))
             .filter(m -> {
                 Set<CallEdge> callers = incoming.get(m.key());
                 if (callers == null || callers.isEmpty()) {
